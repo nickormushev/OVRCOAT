@@ -4,8 +4,12 @@ import os
 import cv2
 import json
 import argparse
+import numpy as np
 from tqdm import tqdm 
+import itertools
 
+import multiprocessing as mp
+from detectron2.utils.visualizer import random_color
 import detectron2.data.transforms as T
 from detectron2.config import get_cfg
 from detectron2.checkpoint import DetectionCheckpointer
@@ -152,13 +156,63 @@ def get_parser():
     )
     parser.add_argument(
         "--opts",
-        help="Modify config options using the command-line 'KEY VALUE' pairs",
-        # HARDCODED default
+        help="modify config options using the command-line 'key value' pairs",
+        # hardcoded default
         default=["MODEL.WEIGHTS", "/home/nikolay/Downloads/fcclip_cocopan.pth"],
         nargs=argparse.REMAINDER,
     )
+
     return parser
 
+
+def create_open_vocab_dataset():
+    coco_metadata = MetadataCatalog.get("openvocab_coco_2017_val_panoptic_with_sem_seg")
+    ade20k_metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
+    lvis_classes = open("./fcclip/data/datasets/lvis_1203_with_prompt_eng.txt", 'r').read().splitlines()
+    lvis_classes = [x[x.find(':')+1:] for x in lvis_classes]
+    lvis_colors = list(
+        itertools.islice(itertools.cycle(coco_metadata.stuff_colors), len(lvis_classes))
+    )
+    # rerrange to thing_classes, stuff_classes
+    coco_thing_classes = coco_metadata.thing_classes
+    coco_stuff_classes = [x for x in coco_metadata.stuff_classes if x not in coco_thing_classes]
+    coco_thing_colors = coco_metadata.thing_colors
+    coco_stuff_colors = [x for x in coco_metadata.stuff_colors if x not in coco_thing_colors]
+    ade20k_thing_classes = ade20k_metadata.thing_classes
+    ade20k_stuff_classes = [x for x in ade20k_metadata.stuff_classes if x not in ade20k_thing_classes]
+    ade20k_thing_colors = ade20k_metadata.thing_colors
+    ade20k_stuff_colors = [x for x in ade20k_metadata.stuff_colors if x not in ade20k_thing_colors]
+
+    user_classes = []
+    user_colors = [random_color(rgb=True, maximum=1) for _ in range(len(user_classes))]
+
+    # Adding all the classes affects the results
+    stuff_classes = coco_stuff_classes + ade20k_stuff_classes
+    stuff_colors = coco_stuff_colors + ade20k_stuff_colors
+    thing_classes = user_classes + coco_thing_classes + ade20k_thing_classes + lvis_classes
+    thing_colors = user_colors + coco_thing_colors + ade20k_thing_colors + lvis_colors
+
+    thing_dataset_id_to_contiguous_id = {x: x for x in range(len(thing_classes))}
+    DatasetCatalog.register(
+        "openvocab_dataset", lambda x: []
+    )
+    return MetadataCatalog.get("openvocab_dataset").set(
+        stuff_classes=thing_classes+stuff_classes,
+        stuff_colors=thing_colors+stuff_colors,
+        thing_dataset_id_to_contiguous_id=thing_dataset_id_to_contiguous_id,
+    )
+
+def get_color_palette(num_colors):
+    np.random.seed(42)  # For reproducibility
+    return np.random.randint(0, 255, size=(num_colors, 3), dtype=np.uint8)
+
+def apply_color_palette(segmentation, palette):
+    h, w = segmentation.shape
+    colored_mask = np.zeros((h, w, 3), dtype=np.uint8)
+    unique_ids = np.unique(segmentation)
+    for uid in unique_ids:
+        colored_mask[segmentation == uid] = palette[uid % len(palette)]
+    return colored_mask
 
 def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
     img = read_image(img_path, format="BGR")
@@ -173,14 +227,30 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
 
     pan_annotations.append(dict)
 
+    # cv2.imwrite(pan_img_path, pred['panoptic_seg'][0].to("cpu").numpy())
+    # Convert the panoptic segmentation to RGB format
+    pan_img = pred['panoptic_seg'][0].to("cpu").numpy()
+    palette = get_color_palette(len(pred["panoptic_seg"][1]))
+    pan_img_rgb = apply_color_palette(pan_img, palette)
+
+    # Save the panoptic segmentation image in RGB format
     pan_img_path = os.path.join(output_dir, img_id + ".png")
-    cv2.imwrite(pan_img_path, pred['panoptic_seg'][0].to("cpu").numpy())
+    cv2.imwrite(pan_img_path, pan_img_rgb)
 
 def print_available_datasets():
     print(DatasetCatalog.keys())
 
+def worker(proc_id, predictor, img_paths, output_dir):
+    local_annotations = []
+    for img_path in img_paths:
+        img_file = os.path.basename(img_path)
+        process_image(predictor, img_path, img_file, output_dir, local_annotations)
+    
+    return local_annotations
+
 if __name__ == "__main__":
 
+    mp.set_start_method("spawn", force=True)
     args = get_parser().parse_args()
     setup_logger(name="fvcore")
     logger = setup_logger()
@@ -189,7 +259,8 @@ if __name__ == "__main__":
     cfg = setup_cfg(args)
 
     #dataset = DatasetCatalog.get("openvocab_ade20k_panoptic_train")
-    metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
+    #metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
+    metadata = create_open_vocab_dataset()
 
     predictor = DefaultPredictor(cfg)
     predictor.set_metadata(metadata)
@@ -198,12 +269,28 @@ if __name__ == "__main__":
 
     pan_annotations = []
     if args.input_dir:
-        for img_file in tqdm(os.listdir(args.input_dir)):
-            if img_file.endswith(".png") or img_file.endswith(".jpg"):
-                img_path = os.path.join(args.input_dir, img_file)
-                process_image(predictor, img_path, img_file, args.output_dir, pan_annotations)
-            else:
-                logger.warning("File {} is not a png file".format(img_file))
+        img_dir = args.input_dir
+        img_paths = [os.path.join(img_dir, img_file) for img_file in os.listdir(img_dir)
+                      if img_file.endswith((".png", ".jpg"))]
+        
+        cpu_num = 4
+        chunk_size = len(img_paths) // cpu_num
+        chunks = [img_paths[i:i + chunk_size] for i in range(0, len(img_paths), chunk_size)]
+
+        workers = mp.Pool(processes=cpu_num)
+        processes = []
+        for proc_id, chunk in enumerate(chunks):
+            p = workers.apply_async(worker, (proc_id, predictor, chunk, args.output_dir))
+            processes.append(p)
+        
+
+        workers.close()
+        workers.join()
+
+        for p in processes:
+            s = p.get()
+            pan_annotations.extend(s)
+
     elif args.input:
         img_file = args.input.split("/")[-1]
         process_image(predictor, args.input, img_file, args.output_dir, pan_annotations)
