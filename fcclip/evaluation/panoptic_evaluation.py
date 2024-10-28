@@ -23,6 +23,11 @@ from detectron2.utils.visualizer import ColorMode, Visualizer, random_color
 
 import PIL.Image as Image
 
+# If set to False we ignore missmatched classes for true positive calculations for PQ
+CHECK_CLASSIFICATION = True
+# If set to False we ignore VOID class if missclassified for the true postive calculations for PQ
+CHECK_BACKGROUND = True
+
 from panopticapi.utils import get_traceback, rgb2id
 
 OFFSET = 256 * 256 * 256
@@ -48,6 +53,10 @@ class PQStatObjectRecognition():
             self.not_found_objects_percent = 0.0
             # Pred but no GT
             self.extra_objects_percent = 0.0
+            # Misslabelled objects percent
+            self.mislabeled_objects_percent = 0.0
+            # Object mistaken as background count
+            self.object_mistaken_as_background = 0.0
 
 
 class PQStat():
@@ -64,20 +73,29 @@ class PQStat():
         
         for img_id, obj_recogn in pq_stat.obj_recogn_per_img.items():
             self.obj_recogn_per_img[img_id] = obj_recogn
-
+        
         return self
     
+    def get_top_n_highest_mistaken_as_background_imgs(self, n: int):
+        sorted_img_ids = sorted(self.obj_recogn_per_img.items(),
+                             key=lambda x: x[1].object_mistaken_as_background, reverse=True)
+        return sorted_img_ids[:n]
+    
     def object_detection_percentage_info(self):
-        count, not_found, extra  = 0, 0, 0
+        count, not_found, mislabeled_as_background, mislabeled, extra  = 0, 0, 0, 0, 0
         for _, info in self.obj_recogn_per_img.items():
             not_found += info.not_found_objects_percent
+            mislabeled += info.mislabeled_objects_percent
+            mislabeled_as_background += info.object_mistaken_as_background
             extra += info.extra_objects_percent
             count += 1
 
         if count != 0:
-            return {"missed": not_found / count, "extra": extra / count, "count: ": count}
+            return {"missed": not_found / count, "misslabeled": mislabeled / count, 
+                    "misslabeled_as_background": mislabeled_as_background / count,
+                    "extra": extra / count, "count: ": count}
         else:
-            return {"missed": 0, "extra": 0, "count: ": 0}
+            return {"missed": 0, "extra": 0, "count: ": 0, "misslabeled": 0, "misslabeled_as_background": 0}
 
 
     def pq_average(self, categories, isthing):
@@ -113,14 +131,11 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
     pq_stat = PQStat()
 
     idx = 0
-    # Walk through all images
     for gt_ann, pred_ann in annotation_set:
-        # Each 100 images print the progress
         if idx % 100 == 0:
             print('Core: {}, {} from {} images processed'.format(proc_id, idx, len(annotation_set)))
         idx += 1
 
-        # Load GT and prediction panoptic segmentation for one image
         pan_gt = np.array(Image.open(os.path.join(gt_folder, gt_ann['file_name'])), dtype=np.uint32)
         # This flattens image making unique ids for each image
         pan_gt = rgb2id(pan_gt)
@@ -128,11 +143,14 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
         # Comment out if we are not using rgb version of images
         # pan_pred = rgb2id(pan_pred)
 
+        pred_ann['segments_info'].append({'id': VOID, 'category_id': VOID, 'area': 1})
+
         # Make a map from segment id to segment info for both GT and prediction
         gt_segms = {el['id']: el for el in gt_ann['segments_info']}
         pred_segms = {el['id']: el for el in pred_ann['segments_info']}
 
-        # predicted segments area calculation + prediction sanity checks
+        # Had issues adding directly to pred_segms
+        pred_ann['segments_info'].pop()
 
         # Create set of all segment ids in the prediction
         # el['id'] gives the segment id which the pixels belonging to that segment
@@ -147,10 +165,9 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
         for label, label_cnt in zip(labels, labels_cnt):
             # Labels are from the image. We want to see if they are in the segment info
             # If not or they are void we skip or throw an error
-            if label not in pred_segms:
+            if label not in pred_segms or label == VOID:
                 if label == VOID:
-                    # pred_segms[label]['area'] = label_cnt
-                    # If I find an error try this !!!!!!
+                    pred_segms[label]['area'] = label_cnt
                     continue
                 raise KeyError('In the image with ID {} segment with ID {} is presented in PNG and not presented in JSON.'.format(gt_ann['image_id'], label))
             
@@ -182,48 +199,56 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
             # Intersection relies on the fact that each object has a unique id
             gt_pred_map[(gt_id, pred_id)] = intersection
         
-        # Idea: Look at the interesections such that pred_id = 0 and gt_id != 0 and the opposite
-        # I can count them and see how often that happens and print that out as a metric
-        # Do IoU maybe and check if over 0.5
-        # TP is if pred_id != 0 and gt_id != 0 and IoU > 0.5
-        # TP is if pred_id == 0 and gt_id == 0 and IoU > 0.5
-        # TN otherwise
-        # Realistically I care more for how often the model is wrong than right
-        # So maybe we can look at the FP and FN where pred_id != 0 and gt_id == 0 and the opposite . Also the IoU > 0.5 still
-
         # count all matched pairs
         gt_matched = set()
         pred_matched = set()
 
         # For each pair of gt and pred
-        mislabeled = []
+        object_not_found = []
+        missclassified_as_background_count = 0.0
+        misslabeled = 0.0
         for label_tuple, intersection in gt_pred_map.items():
             gt_label, pred_label = label_tuple
+
+            # More or less checks if gt_label is VOID
+            # Checked and in other cases doesn't enter
             if gt_label not in gt_segms:
                 continue
-            if pred_label not in pred_segms:
-                continue
             if gt_segms[gt_label]['iscrowd'] == 1:
-                continue
+               continue
 
             union = pred_segms[pred_label]['area'] + gt_segms[gt_label]['area'] - intersection - gt_pred_map.get((VOID, pred_label), 0)
             iou = intersection / union
 
-
             if iou > 0.5:
-                if gt_segms[gt_label]['category_id'] != pred_segms[pred_label]['category_id']:
-                    mislabeled += [gt_label]
+                if CHECK_CLASSIFICATION and gt_segms[gt_label]['category_id'] != pred_segms[pred_label]['category_id']:
+                    misslabeled += 1
                     continue
+
+                # If pred_label for a segment is VOID we skip
+                # This tracks gt objects that exist but are classified as background
+                if CHECK_BACKGROUND and pred_label == VOID:
+                    missclassified_as_background_count += 1
+                    continue
+
                 # If the category_id is not the same we skip. Not in my case
                 pq_stat[gt_segms[gt_label]['category_id']].tp += 1
                 pq_stat[gt_segms[gt_label]['category_id']].iou += iou
                 gt_matched.add(gt_label)
                 pred_matched.add(pred_label)
+            else:
+                object_not_found += [gt_label]
+        
+
+        total_obj = len(gt_segms)
+
+        pq_stat.obj_recogn_per_img[gt_ann['image_id']].object_mistaken_as_background = missclassified_as_background_count / total_obj
+        pq_stat.obj_recogn_per_img[gt_ann['image_id']].mislabeled_objects_percent = misslabeled / total_obj
+
 
         # count false negatives
         crowd_labels_dict = {}
         missed_obj = 0.0
-        total_obj = len(gt_segms)
         for gt_label, gt_info in gt_segms.items():
             if gt_label in gt_matched:
                 continue
@@ -232,8 +257,10 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                 crowd_labels_dict[gt_info['category_id']] = gt_label
                 continue
 
-            # not found
-            if gt_label not in mislabeled:
+            # not found. Already counted in mislabeled
+            # So if object was not 
+            if gt_label in object_not_found:
+                # This not really needed we can just take unique of gt_label
                 missed_obj += 1
 
             # not found or not matched
@@ -241,6 +268,7 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
         
         if total_obj != 0:
             pq_stat.obj_recogn_per_img[gt_ann['image_id']].not_found_objects_percent = missed_obj / total_obj
+
 
         # count false positives
         extra_preds = 0.0
@@ -331,7 +359,14 @@ def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
     pq_stat = pq_compute_multi_core(matched_annotations_list, gt_folder, pred_folder, categories)
 
     print("Per image panoptic quality metrics: ")
-    print("Missed Percentages: ", pq_stat.object_detection_percentage_info())
+    print("Percentages stats: ", pq_stat.object_detection_percentage_info())
+    
+    print("-" * 10)
+    
+    top_10 = pq_stat.get_top_n_highest_mistaken_as_background_imgs(10)
+    for img in top_10:
+        print(f"Image ID: {img[0]}, False Background percentage: {
+            pq_stat.obj_recogn_per_img[img[0]].object_mistaken_as_background}")
 
     metrics = [("All", None), ("Things", True), ("Stuff", False)]
     results = {}
