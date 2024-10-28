@@ -124,6 +124,7 @@ class VisualizationDemo(object):
         user_classes = []
         user_colors = [random_color(rgb=True, maximum=1) for _ in range(len(user_classes))]
 
+        # Adding all the classes affects the results
         stuff_classes = coco_stuff_classes + ade20k_stuff_classes
         stuff_colors = coco_stuff_colors + ade20k_stuff_colors
         thing_classes = user_classes + coco_thing_classes + ade20k_thing_classes + lvis_classes

@@ -125,7 +125,7 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
         # This flattens image making unique ids for each image
         pan_gt = rgb2id(pan_gt)
         pan_pred = np.array(Image.open(os.path.join(pred_folder, pred_ann['file_name'])), dtype=np.uint32)
-        # I think it is not needed since my predictions are already flat
+        # Comment out if we are not using rgb version of images
         # pan_pred = rgb2id(pan_pred)
 
         # Make a map from segment id to segment info for both GT and prediction
