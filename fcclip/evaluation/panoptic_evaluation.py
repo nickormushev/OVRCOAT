@@ -28,6 +28,8 @@ CHECK_CLASSIFICATION = True
 # If set to False we ignore VOID class if missclassified for the true postive calculations for PQ
 CHECK_BACKGROUND = False
 
+# TODO: Validate calculations of missed objects again!
+
 from panopticapi.utils import get_traceback, rgb2id
 
 OFFSET = 256 * 256 * 256
@@ -239,10 +241,9 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
         pred_matched = set()
 
         # For each pair of gt and pred
-        object_not_found = []
         missclassified_as_background_count = 0.0
         misslabeled = 0.0
-        detected = []
+        detected = 0.0
         for label_tuple, intersection in gt_pred_map.items():
             gt_label, pred_label = label_tuple
 
@@ -257,7 +258,7 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
             iou = intersection / union
 
             if iou > 0.5:
-                detected += [gt_label]
+                detected += 1
                 if CHECK_CLASSIFICATION and gt_segms[gt_label]['category_id'] != pred_segms[pred_label]['category_id']:
                     misslabeled += 1
                     continue
@@ -265,6 +266,9 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                 # If pred_label for a segment is VOID we skip
                 # This tracks gt objects that exist but are classified as background
                 if CHECK_BACKGROUND and pred_label == VOID:
+
+                    # TODO: This is incorrect. What if interescetion is smaller but one object is entirely in
+                    # the other. FIX IT!
                     missclassified_as_background_count += 1
                     continue
 
@@ -273,18 +277,15 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                 pq_stat[gt_segms[gt_label]['category_id']].iou += iou
                 gt_matched.add(gt_label)
                 pred_matched.add(pred_label)
-            else:
-                object_not_found += [gt_label]
         
 
         pq_stat.obj_recogn_per_img[gt_ann['image_id']].total_objects_gt = len(gt_segms) 
         pq_stat.obj_recogn_per_img[gt_ann['image_id']].object_mistaken_as_background = missclassified_as_background_count 
         pq_stat.obj_recogn_per_img[gt_ann['image_id']].mislabeled_objects = misslabeled
-
+        pq_stat.obj_recogn_per_img[gt_ann['image_id']].not_found_objects = len(gt_segms) - detected
 
         # count false negatives
         crowd_labels_dict = {}
-        missed_obj = 0.0
         for gt_label, gt_info in gt_segms.items():
             if gt_label in gt_matched:
                 continue
@@ -293,19 +294,9 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                 crowd_labels_dict[gt_info['category_id']] = gt_label
                 continue
 
-            # not found. Already counted in mislabeled
-            # So if object was not 
-            if gt_label not in detected:
-                # This not really needed we can just take unique of gt_label
-                missed_obj += 1
-
             # not found or not matched
             pq_stat[gt_info['category_id']].fn += 1
         
-        if len(gt_segms) != 0:
-            pq_stat.obj_recogn_per_img[gt_ann['image_id']].not_found_objects = missed_obj 
-
-
         # count false positives
         extra_preds = 0.0
         pq_stat.obj_recogn_per_img[gt_ann['image_id']].total_objects_pred = len(pred_segms) 
@@ -322,6 +313,8 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
 
             # predicted segment is ignored if more than half of the segment correspond to VOID and CROWD regions
             if intersection / pred_info['area'] > 0.5:
+                # TODO: This is likely incorrect. What if interescetion is smaller but one object is entirely in
+                # the other. FIX IT!
                 extra_preds += 1
                 continue
 
