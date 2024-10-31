@@ -26,7 +26,7 @@ import PIL.Image as Image
 # If set to False we ignore missmatched classes for true positive calculations for PQ
 CHECK_CLASSIFICATION = True
 # If set to False we ignore VOID class if missclassified for the true postive calculations for PQ
-CHECK_BACKGROUND = True
+CHECK_BACKGROUND = False
 
 from panopticapi.utils import get_traceback, rgb2id
 
@@ -51,12 +51,25 @@ class PQStatObjectRecognition():
         def __init__(self):
             # GT not found
             self.not_found_objects_percent = 0.0
+            self.not_found_objects = 0.0
             # Pred but no GT
             self.extra_objects_percent = 0.0
+            self.extra_objects = 0.0
             # Misslabelled objects percent
             self.mislabeled_objects_percent = 0.0
+            self.mislabeled_objects = 0.0
             # Object mistaken as background count
+            self.object_mistaken_as_background_percent = 0.0
             self.object_mistaken_as_background = 0.0
+
+            self.total_objects_gt = 0.0
+            self.total_objects_pred = 0.0
+        
+        def calc_percentages(self):
+            self.not_found_objects_percent = self.not_found_objects / self.total_objects_gt
+            self.extra_objects_percent = self.extra_objects / self.total_objects_pred
+            self.mislabeled_objects_percent = self.mislabeled_objects / self.total_objects_gt
+            self.object_mistaken_as_background_percent = self.object_mistaken_as_background / self.total_objects_gt
 
 
 class PQStat():
@@ -82,20 +95,42 @@ class PQStat():
         return sorted_img_ids[:n]
     
     def object_detection_percentage_info(self):
-        count, not_found, mislabeled_as_background, mislabeled, extra  = 0, 0, 0, 0, 0
-        for _, info in self.obj_recogn_per_img.items():
-            not_found += info.not_found_objects_percent
-            mislabeled += info.mislabeled_objects_percent
-            mislabeled_as_background += info.object_mistaken_as_background
-            extra += info.extra_objects_percent
-            count += 1
+        img_count, not_found, mislabeled_as_background, mislabeled, extra  = 0, 0, 0, 0, 0
+        not_found_percent, mislabeled_percent, mislabeled_as_background_percent, extra_percent = 0, 0, 0, 0
+        total_obj_gt, total_obj_pred = 0, 0
 
-        if count != 0:
-            return {"missed": not_found / count, "misslabeled": mislabeled / count, 
-                    "misslabeled_as_background": mislabeled_as_background / count,
-                    "extra": extra / count, "count: ": count}
+        for _, info in self.obj_recogn_per_img.items():
+            info.calc_percentages()
+            not_found_percent += info.not_found_objects_percent
+            mislabeled_percent += info.mislabeled_objects_percent
+            mislabeled_as_background_percent += info.object_mistaken_as_background
+            extra_percent += info.extra_objects_percent
+
+            not_found += info.not_found_objects
+            mislabeled_as_background += info.object_mistaken_as_background
+            mislabeled += info.mislabeled_objects
+            extra += info.extra_objects
+
+            total_obj_gt += info.total_objects_gt
+            total_obj_pred += info.total_objects_pred
+
+            img_count += 1
+
+        if img_count != 0:
+            return { "Per_image": { 
+                        "missed": not_found_percent / img_count, "misslabeled": mislabeled_percent/ img_count, 
+                        "misslabeled_as_background": mislabeled_as_background_percent / img_count,
+                        "extra": extra_percent / img_count, "img_count: ": img_count
+                     },
+                     "Total": {
+                        "missed_objects": not_found / total_obj_gt, "misslabeled_objects": mislabeled/ total_obj_gt, 
+                        "objects_misslabeled_as_background": mislabeled_as_background / total_obj_gt,
+                        "extra_objects": extra / total_obj_pred, "gt_objects_count: ": total_obj_gt,
+                        "pred_objects_count: ": total_obj_pred
+                     }
+                    }
         else:
-            return {"missed": 0, "extra": 0, "count: ": 0, "misslabeled": 0, "misslabeled_as_background": 0}
+            return {}
 
 
     def pq_average(self, categories, isthing):
@@ -207,6 +242,7 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
         object_not_found = []
         missclassified_as_background_count = 0.0
         misslabeled = 0.0
+        detected = []
         for label_tuple, intersection in gt_pred_map.items():
             gt_label, pred_label = label_tuple
 
@@ -221,6 +257,7 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
             iou = intersection / union
 
             if iou > 0.5:
+                detected += [gt_label]
                 if CHECK_CLASSIFICATION and gt_segms[gt_label]['category_id'] != pred_segms[pred_label]['category_id']:
                     misslabeled += 1
                     continue
@@ -240,10 +277,9 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                 object_not_found += [gt_label]
         
 
-        total_obj = len(gt_segms)
-
-        pq_stat.obj_recogn_per_img[gt_ann['image_id']].object_mistaken_as_background = missclassified_as_background_count / total_obj
-        pq_stat.obj_recogn_per_img[gt_ann['image_id']].mislabeled_objects_percent = misslabeled / total_obj
+        pq_stat.obj_recogn_per_img[gt_ann['image_id']].total_objects_gt = len(gt_segms) 
+        pq_stat.obj_recogn_per_img[gt_ann['image_id']].object_mistaken_as_background = missclassified_as_background_count 
+        pq_stat.obj_recogn_per_img[gt_ann['image_id']].mislabeled_objects = misslabeled
 
 
         # count false negatives
@@ -259,20 +295,20 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
 
             # not found. Already counted in mislabeled
             # So if object was not 
-            if gt_label in object_not_found:
+            if gt_label not in detected:
                 # This not really needed we can just take unique of gt_label
                 missed_obj += 1
 
             # not found or not matched
             pq_stat[gt_info['category_id']].fn += 1
         
-        if total_obj != 0:
-            pq_stat.obj_recogn_per_img[gt_ann['image_id']].not_found_objects_percent = missed_obj / total_obj
+        if len(gt_segms) != 0:
+            pq_stat.obj_recogn_per_img[gt_ann['image_id']].not_found_objects = missed_obj 
 
 
         # count false positives
         extra_preds = 0.0
-        total_obj = len(pred_segms)
+        pq_stat.obj_recogn_per_img[gt_ann['image_id']].total_objects_pred = len(pred_segms) 
         for pred_label, pred_info in pred_segms.items():
             # Case 1) It was matched
             if pred_label in pred_matched:
@@ -290,8 +326,8 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                 continue
 
             pq_stat[pred_info['category_id']].fp += 1
-        if total_obj != 0:
-            pq_stat.obj_recogn_per_img[gt_ann['image_id']].extra_objects_percent = extra_preds / total_obj
+        if len(pred_segms) != 0:
+            pq_stat.obj_recogn_per_img[gt_ann['image_id']].extra_objects = extra_preds
 
     print('Core: {}, all {} images processed'.format(proc_id, len(annotation_set)))
     return pq_stat
@@ -359,14 +395,16 @@ def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
     pq_stat = pq_compute_multi_core(matched_annotations_list, gt_folder, pred_folder, categories)
 
     print("Per image panoptic quality metrics: ")
-    print("Percentages stats: ", pq_stat.object_detection_percentage_info())
+    object_detection_stats = pq_stat.object_detection_percentage_info()
+    print("Percentages stats: ")
+    print(json.dumps(object_detection_stats, indent=4))
     
-    print("-" * 10)
+    print("-" * 50)
     
-    top_10 = pq_stat.get_top_n_highest_mistaken_as_background_imgs(10)
-    for img in top_10:
-        print(f"Image ID: {img[0]}, False Background percentage: {
-            pq_stat.obj_recogn_per_img[img[0]].object_mistaken_as_background}")
+    #top_10 = pq_stat.get_top_n_highest_mistaken_as_background_imgs(10)
+    #for img in top_10:
+    #    print(f"Image ID: {img[0]}, False Background percentage: {
+    #        pq_stat.obj_recogn_per_img[img[0]].object_mistaken_as_background}")
 
     metrics = [("All", None), ("Things", True), ("Stuff", False)]
     results = {}
