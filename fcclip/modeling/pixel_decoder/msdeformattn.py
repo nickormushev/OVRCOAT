@@ -249,6 +249,7 @@ class MSDeformAttnPixelDecoder(nn.Module):
             input_proj_list = []
             # from low resolution to high resolution (res5 -> res2)
             for in_channels in transformer_in_channels[::-1]:
+                # Makes sure that for each input size we have the same number of channels
                 input_proj_list.append(nn.Sequential(
                     nn.Conv2d(in_channels, conv_dim, kernel_size=1),
                     nn.GroupNorm(32, conv_dim),
@@ -347,19 +348,31 @@ class MSDeformAttnPixelDecoder(nn.Module):
         ret["common_stride"] = cfg.MODEL.SEM_SEG_HEAD.COMMON_STRIDE
         return ret
 
+    # Pixel decoder so far just runs the transformer encoder on multiple feature levels
+    # that are gotten from the backbone
     @autocast(enabled=False)
     def forward_features(self, features):
         srcs = []
         pos = []
         # Reverse feature maps into top-down order (from low to high resolution)
         for idx, f in enumerate(self.transformer_in_features[::-1]):
+            # So features apparently holds different level features
+            # f has values res5 res2 res3 etc.
+            # My assumption is that we are iterating through the features and then projecting them
             x = features[f].float()  # deformable detr does not support half precision
+
+            # Input projection more or less makes sure we have same number of channels for each 
+            # feature map at each layer
             srcs.append(self.input_proj[idx](x))
+            # Pos encodings
             pos.append(self.pe_layer(x))
 
+        # The transformer here is an encoder. I guess the Pixel Decoders can have 
+        # an encoder as well similar to how DETR works
         y, spatial_shapes, level_start_index = self.transformer(srcs, pos)
         bs = y.shape[0]
 
+        # Separate encodings for each backbone feature level
         split_size_or_sections = [None] * self.transformer_num_feature_levels
         for i in range(self.transformer_num_feature_levels):
             if i < self.transformer_num_feature_levels - 1:
@@ -372,6 +385,8 @@ class MSDeformAttnPixelDecoder(nn.Module):
         multi_scale_features = []
         num_cur_levels = 0
         for i, z in enumerate(y):
+            # Originally z is [batch_size, num_channels, height * width]
+            # Reshapes z to [batch_size, num_channels, height, width]
             out.append(z.transpose(1, 2).view(bs, -1, spatial_shapes[i][0], spatial_shapes[i][1]))
 
         # append `out` with extra FPN levels
@@ -380,8 +395,11 @@ class MSDeformAttnPixelDecoder(nn.Module):
             x = features[f].float()
             lateral_conv = self.lateral_convs[idx]
             output_conv = self.output_convs[idx]
+            # Conv that increases channels to 256
             cur_fpn = lateral_conv(x)
             # Following FPN implementation, we use nearest upsampling here
+            # Upsampling I guess. Doesn't seem to increase resolution though
+            # Why they do it is a bit unclear to me
             y = cur_fpn + F.interpolate(out[-1], size=cur_fpn.shape[-2:], mode="bilinear", align_corners=False)
             y = output_conv(y)
             out.append(y)
@@ -391,4 +409,9 @@ class MSDeformAttnPixelDecoder(nn.Module):
                 multi_scale_features.append(o)
                 num_cur_levels += 1
 
+        # mask_features is a 1x1 conv layer that reduces channels to mask_dim
+        # I guess this is how the mask is generated from the features of the pixel decoder
+        # Although the paper is written mask decoder it seems it is not really a decoder
+        # The above might be incorrect
+        # Out 0 is the highest res feature map encoding of the pixel decoder
         return self.mask_features(out[-1]), out[0], multi_scale_features

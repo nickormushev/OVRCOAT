@@ -220,7 +220,7 @@ class SetCriterion(nn.Module):
              targets: list of dicts, such that len(targets) == batch_size.
                       The expected keys in each dict depends on the losses applied, see each loss' doc
         """
-        outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs"}
+        outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs"} # Removes intermediate masks and classes
 
         # Retrieve the matching between the outputs of the last layer and the targets
         indices = self.matcher(outputs_without_aux, targets)

@@ -41,13 +41,14 @@ def get_classification_logits(x, text_classifier, logit_scale, num_templates=Non
     # logit_scale is a learnable scalar https://github.com/mlfoundations/open_clip/blob/main/src/open_clip/model.py#L201
     # return: [B, *, num_classes]
     x = F.normalize(x, dim=-1)
+    # Ensure positive scale maybe
     logit_scale = torch.clamp(logit_scale.exp(), max=100)
-    pred_logits = logit_scale * x @ text_classifier.T # B, *, N + 1
+    pred_logits = logit_scale * x @ text_classifier.T # B, *, N + 1 , Calculate similarity between prompt and image/x
     # max ensembel as in OpenSeg/ODISE
     final_pred_logits = []
     cur_idx = 0
     for num_t in num_templates: 
-        final_pred_logits.append(pred_logits[:, :, cur_idx: cur_idx + num_t].max(-1).values)
+        final_pred_logits.append(pred_logits[:, :, cur_idx: cur_idx + num_t].max(-1).values) # Get max simialirity between templates for class
         cur_idx += num_t
     final_pred_logits.append(pred_logits[:, :, -1]) # the last classifier is for void
     final_pred_logits = torch.stack(final_pred_logits, dim=-1)
@@ -68,11 +69,11 @@ class MaskPooling(nn.Module):
         """
         if not x.shape[-2:] == mask.shape[-2:]:
             # reshape mask to x
-            mask = F.interpolate(mask, size=x.shape[-2:], mode='bilinear', align_corners=False)
+            mask = F.interpolate(mask, size=x.shape[-2:], mode='bilinear', align_corners=False) # Upsample mask to the same size as x
         with torch.no_grad():
-            mask = mask.detach()
-            mask = (mask > 0).to(mask.dtype)
-            denorm = mask.sum(dim=(-1, -2), keepdim=True) + 1e-8
+            mask = mask.detach() # Detach mask from the graph so it does not affect the gradients
+            mask = (mask > 0).to(mask.dtype) # Make mask binary
+            denorm = mask.sum(dim=(-1, -2), keepdim=True) + 1e-8 # Calculate normalisation based all pixels in HxW layer
 
         mask_pooled_x = torch.einsum(
             "bchw,bqhw->bqc",
@@ -418,22 +419,24 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
         pos = []
         size_list = []
 
-        # disable mask, it does not affect performance
+        # disable mask, it does not affect performance # WHY HAVE IT THEN????
         del mask
 
         for i in range(self.num_feature_levels):
+            # Gets High, Width of the layer of features
             size_list.append(x[i].shape[-2:])
             pos.append(self.pe_layer(x[i], None).flatten(2))
             src.append(self.input_proj[i](x[i]).flatten(2) + self.level_embed.weight[i][None, :, None])
 
-            # flatten NxCxHxW to HWxNxC
+            # flatten NxCxHxW to HWxNxC # N is the batch size
             pos[-1] = pos[-1].permute(2, 0, 1)
             src[-1] = src[-1].permute(2, 0, 1)
 
         _, bs, _ = src[0].shape
 
-        # QxNxC
+        # QxNxC . These are the query positional embeddings
         query_embed = self.query_embed.weight.unsqueeze(1).repeat(1, bs, 1)
+        # These are the actual initial query features that are updated and give the decoder embeddings
         output = self.query_feat.weight.unsqueeze(1).repeat(1, bs, 1)
 
         predictions_class = []
@@ -445,15 +448,15 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
         predictions_class.append(outputs_class)
         predictions_mask.append(outputs_mask)
 
-        for i in range(self.num_layers):
+        for i in range(self.num_layers): # For each transformer decoder layer
             level_index = i % self.num_feature_levels
-            attn_mask[torch.where(attn_mask.sum(-1) == attn_mask.shape[-1])] = False
-            # attention: cross-attention first
+            attn_mask[torch.where(attn_mask.sum(-1) == attn_mask.shape[-1])] = False # Sets rows with only 3 values to false. This is to prevent self-attention on padded regions I guess
+            # attention: cross-attention first with pixel decoder ouptuts (src) and queries (output)
             output = self.transformer_cross_attention_layers[i](
                 output, src[level_index],
                 memory_mask=attn_mask,
                 memory_key_padding_mask=None,  # here we do not apply masking on padded region
-                pos=pos[level_index], query_pos=query_embed
+                pos=pos[level_index], query_pos=query_embed # pos is for the key and query_pos for the query position
             )
 
             output = self.transformer_self_attention_layers[i](
@@ -483,26 +486,30 @@ class MultiScaleMaskedTransformerDecoder(nn.Module):
         }
         return out
 
+    # 1 transformer layer
     def forward_prediction_heads(self, output, mask_features, attn_mask_target_size, text_classifier, num_templates):
-        decoder_output = self.decoder_norm(output)
-        decoder_output = decoder_output.transpose(0, 1)
-        mask_embed = self.mask_embed(decoder_output)
-        outputs_mask = torch.einsum("bqc,bchw->bqhw", mask_embed, mask_features)
+        decoder_output = self.decoder_norm(output) # Normalisation. Not the actual decoder. 
+        decoder_output = decoder_output.transpose(0, 1) # Moves batch size to front. Is in the middle before
+        mask_embed = self.mask_embed(decoder_output) # MLP that generates the mask embeddings. This is a mask2fomrder single decoder
+        outputs_mask = torch.einsum("bqc,bchw->bqhw", mask_embed, mask_features) # From embedding and final pixel decoder features we get the actual masks
 
         # fcclip head
-        maskpool_embeddings = self.mask_pooling(x=mask_features, mask=outputs_mask) # [B, Q, C]
-        maskpool_embeddings = self._mask_pooling_proj(maskpool_embeddings)
-        class_embed = self.class_embed(maskpool_embeddings + decoder_output)
-        outputs_class = get_classification_logits(class_embed, text_classifier, self.logit_scale, num_templates)
+        maskpool_embeddings = self.mask_pooling(x=mask_features, mask=outputs_mask) # [B, Q, C] Apply masks and get embedding with mask applied
+        maskpool_embeddings = self._mask_pooling_proj(maskpool_embeddings) # Normalise and Linear layer
+        class_embed = self.class_embed(maskpool_embeddings + decoder_output) # Mask pool added with the decoder layer output and ran through MLP
+        outputs_class = get_classification_logits(class_embed, text_classifier, self.logit_scale, num_templates) # [Batch, Query count, Num classes/150 + 1] 
 
         # NOTE: prediction is of higher-resolution
         # [B, Q, H, W] -> [B, Q, H*W] -> [B, h, Q, H*W] -> [B*h, Q, HW]
         attn_mask = F.interpolate(outputs_mask, size=attn_mask_target_size, mode="bilinear", align_corners=False)
         # must use bool type
         # If a BoolTensor is provided, positions with ``True`` are not allowed to attend while ``False`` values will be unchanged.
-        attn_mask = (attn_mask.sigmoid().flatten(2).unsqueeze(1).repeat(1, self.num_heads, 1, 1).flatten(0, 1) < 0.5).bool()
+        attn_mask = (attn_mask.sigmoid().flatten(2).unsqueeze(1).repeat(1, self.num_heads, 1, 1).flatten(0, 1) < 0.5).bool() # num_heads is duplicating the values for the multi-head attention num of attention heads
         attn_mask = attn_mask.detach()
 
+        # So outputs_class is probability for each class for each query
+        # Output_masks is the mask for each query
+        # Attn_masks is the up/down sampled masks that are gonna be used to apply attention to the region of the output masks
         return outputs_class, outputs_mask, attn_mask
 
     @torch.jit.unused
