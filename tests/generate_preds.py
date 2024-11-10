@@ -21,6 +21,10 @@ from detectron2.data import (
     DatasetCatalog
 )
 
+USE_GT = True
+USE_COLORS = False
+
+
 from detectron2.engine.defaults import DefaultPredictor as d2_defaultPredictor
 
 class DefaultPredictor(d2_defaultPredictor):
@@ -34,7 +38,7 @@ sys.path.append(new_root_dir)
 
 from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
 from fcclip import add_maskformer2_config, add_fcclip_config
-from detectron2.modeling import build_model
+from fcclip import MaskFormerPanopticDatasetMapper, COCOPanopticNewBaselineDatasetMapper
  
 def setup_cfg(args):
     # load config from file and command-line arguments
@@ -67,7 +71,7 @@ def get_parser():
     )
     parser.add_argument(
         "--output-dir",
-        default="./tests/preds",
+        default="./tests/preds-1",
         help="A directory to save outputs"
     )
 
@@ -144,10 +148,17 @@ def apply_color_palette(segmentation, palette):
         colored_mask[segmentation == uid] = palette[uid % len(palette)]
     return colored_mask
 
+
 def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
     img = read_image(img_path, format="BGR")
-    pred = predictor(img)
+    # Add gt to predictor before calling it and pass it inside of the 
+    # predictor to the model
     img_id = img_file.split(".")[0]
+    if USE_GT:
+        # Add gt img_id to predictor
+        predictor.gt_img_id = img_id
+
+    pred = predictor(img)
     dict = {
         "image_id": img_id,
         "file_name": img_id + ".png",
@@ -159,16 +170,16 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
 
     pan_img_path = os.path.join(output_dir, img_id + ".png")
     pan_img = pred['panoptic_seg'][0].to("cpu").numpy()
-    #cv2.imwrite(pan_img_path, pan_img_rgb)
-    # Using colors breaks the mapping from the color to the segments_info
-    # This can be fixed but for now I just generated both greyscale and rgb options
 
-    # Convert the panoptic segmentation to RGB format
-    palette = get_color_palette(len(pred["panoptic_seg"][1]))
-    pan_img_rgb = apply_color_palette(pan_img, palette)
+    if USE_COLORS:
+        # Using colors breaks the mapping from the color to the segments_info
+        # This can be fixed but for now I just generated both greyscale and rgb options
 
-    # Save the panoptic segmentation image in RGB format
-    cv2.imwrite(pan_img_path, pan_img_rgb)
+        # Convert the panoptic segmentation to RGB format
+        palette = get_color_palette(len(pred["panoptic_seg"][1]))
+        pan_img = apply_color_palette(pan_img, palette)
+
+    cv2.imwrite(pan_img_path, pan_img)
 
 def print_available_datasets():
     print(DatasetCatalog.keys())
@@ -181,11 +192,14 @@ if __name__ == "__main__":
 
     cfg = setup_cfg(args)
 
-    #dataset = DatasetCatalog.get("openvocab_ade20k_panoptic_train")
     metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
     #metadata = create_open_vocab_dataset()
 
     predictor = DefaultPredictor(cfg)
+    if USE_GT:
+        # Add dataset mapper to predictor
+        mapper = MaskFormerPanopticDatasetMapper(cfg, True)
+        predictor.mapper = mapper
     predictor.set_metadata(metadata)
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -211,7 +225,7 @@ if __name__ == "__main__":
     output_file = os.path.join(args.output_dir, args.annotations_file_name)
 
 
-    # Write annotations to the output file
+    ## Write annotations to the output file
     with open(output_file, "w") as annotations_file:
         json.dump({"annotations": pan_annotations}, annotations_file, indent=4)
 
