@@ -24,12 +24,11 @@ from detectron2.utils.visualizer import ColorMode, Visualizer, random_color
 import PIL.Image as Image
 
 # If set to False we ignore missmatched classes for true positive calculations for PQ
-CHECK_CLASSIFICATION = True
+CHECK_CLASSIFICATION = False
 # If set to False we ignore VOID class if missclassified for the true postive calculations for PQ
 CHECK_BACKGROUND = False
 
 # TODO: Validate calculations of missed objects again!
-
 from panopticapi.utils import get_traceback, rgb2id
 
 OFFSET = 256 * 256 * 256
@@ -93,25 +92,27 @@ class PQStat():
     
     def get_top_n_highest_mistaken_as_background_imgs(self, n: int):
         sorted_img_ids = sorted(self.obj_recogn_per_img.items(),
-                             key=lambda x: x[1].object_mistaken_as_background, reverse=True)
+                             key=lambda x: x[1].mislabeled_objects_percent, reverse=True)
         return sorted_img_ids[:n]
     
     def object_detection_percentage_info(self):
-        img_count, not_found, mislabeled_as_background, mislabeled, extra  = 0, 0, 0, 0, 0
+        img_count, not_found_total, mislabeled_as_background_total, mislabeled_total, extra_total  = 0, 0, 0, 0, 0
         not_found_percent, mislabeled_percent, mislabeled_as_background_percent, extra_percent = 0, 0, 0, 0
         total_obj_gt, total_obj_pred = 0, 0
 
         for _, info in self.obj_recogn_per_img.items():
             info.calc_percentages()
+            # Per image percentages
             not_found_percent += info.not_found_objects_percent
             mislabeled_percent += info.mislabeled_objects_percent
             mislabeled_as_background_percent += info.object_mistaken_as_background
             extra_percent += info.extra_objects_percent
 
-            not_found += info.not_found_objects
-            mislabeled_as_background += info.object_mistaken_as_background
-            mislabeled += info.mislabeled_objects
-            extra += info.extra_objects
+            # Total counts
+            not_found_total += info.not_found_objects
+            mislabeled_as_background_total += info.object_mistaken_as_background
+            mislabeled_total += info.mislabeled_objects
+            extra_total += info.extra_objects
 
             total_obj_gt += info.total_objects_gt
             total_obj_pred += info.total_objects_pred
@@ -125,9 +126,9 @@ class PQStat():
                         "extra": extra_percent / img_count, "img_count: ": img_count
                      },
                      "Total": {
-                        "missed_objects": not_found / total_obj_gt, "misslabeled_objects": mislabeled/ total_obj_gt, 
-                        "objects_misslabeled_as_background": mislabeled_as_background / total_obj_gt,
-                        "extra_objects": extra / total_obj_pred, "gt_objects_count: ": total_obj_gt,
+                        "missed_objects": not_found_total / total_obj_gt, "misslabeled_objects": mislabeled_total/ total_obj_gt, 
+                        "objects_misslabeled_as_background": mislabeled_as_background_total / total_obj_gt,
+                        "extra_objects": extra_total / total_obj_pred, "gt_objects_count: ": total_obj_gt,
                         "pred_objects_count: ": total_obj_pred
                      }
                     }
@@ -198,7 +199,7 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
         # Gets all unique labels and their counts. For each prediction they are unique
         labels, labels_cnt = np.unique(pan_pred, return_counts=True)
 
-        # For each label in the prediction validate it
+        # For each label in the prediction validate it and caluclate area
         for label, label_cnt in zip(labels, labels_cnt):
             # Labels are from the image. We want to see if they are in the segment info
             # If not or they are void we skip or throw an error
@@ -266,9 +267,8 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                 # If pred_label for a segment is VOID we skip
                 # This tracks gt objects that exist but are classified as background
                 if CHECK_BACKGROUND and pred_label == VOID:
-
-                    # TODO: This is incorrect. What if interescetion is smaller but one object is entirely in
-                    # the other. FIX IT!
+                    # What if interescetion is smaller but one object is entirely in
+                    # the other? I don't think it matters since then it would be a missed object
                     missclassified_as_background_count += 1
                     continue
 
@@ -313,8 +313,6 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
 
             # predicted segment is ignored if more than half of the segment correspond to VOID and CROWD regions
             if intersection / pred_info['area'] > 0.5:
-                # TODO: This is likely incorrect. What if interescetion is smaller but one object is entirely in
-                # the other. FIX IT!
                 extra_preds += 1
                 continue
 
