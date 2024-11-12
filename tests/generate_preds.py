@@ -24,7 +24,6 @@ from detectron2.data import (
 USE_GT = True
 USE_COLORS = False
 
-
 from detectron2.engine.defaults import DefaultPredictor as d2_defaultPredictor
 
 class DefaultPredictor(d2_defaultPredictor):
@@ -141,6 +140,8 @@ def get_color_palette(num_colors):
     return np.random.randint(0, 255, size=(num_colors, 3), dtype=np.uint8)
 
 def apply_color_palette(segmentation, palette):
+    if len(palette) == 0:
+        return segmentation
     h, w = segmentation.shape
     colored_mask = np.zeros((h, w, 3), dtype=np.uint8)
     unique_ids = np.unique(segmentation)
@@ -235,4 +236,9 @@ if __name__ == "__main__":
     # Segment_info section for sure requires empty area (it is overwritte), category_id. For area maybe set it to 0 to be safe
     # I can also try to calculate it. Area is counts of the unique values
 
+    from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_MISS_COUNT
+    print(MATCHED/OBJECT_COUNT)
+
+    sorted_categories_missed = sorted(CATEGORIES_MISS_COUNT.items(), key=lambda miss_count: miss_count[1])
+    print(sorted_categories_missed)
     print("-----------------")

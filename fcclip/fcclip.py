@@ -43,6 +43,9 @@ VILD_PROMPT = [
     "There is a large {} in the scene.",
 ]
 
+MATCHED = 0
+OBJECT_COUNT = 0
+CATEGORIES_MISS_COUNT = {}
 
 @META_ARCH_REGISTRY.register()
 class FCCLIP(nn.Module):
@@ -301,7 +304,6 @@ class FCCLIP(nn.Module):
     # Attempt 1 to fix mask classification by applying the mask to the gt image and then finding the category
     # by the amount of pixels of that category in that area
     def fix_mask_classification(self, masks, gt_img, gt_ann, num_classes):
-        gt_img = torch.from_numpy(rgb2id(gt_img)).to(self.device)
         si = gt_ann['segments_info']
         segments = {s['id']: s for s in si}
         area_threshold = 0.5
@@ -352,17 +354,49 @@ class FCCLIP(nn.Module):
         preds, targets = indices
         map_to_targets = {pred.item(): target.item() for pred, target in zip(preds, targets)}
 
-        sorted_si = sorted(segments_info, key=lambda si: si['area'])
-        category_to_pos = {si['category_id']: 10 - i for i, si in enumerate(sorted_si)}
+        #sorted_si = sorted(segments_info, key=lambda si: si['area'])
+        #category_to_pos = {si['category_id']: 10 - i for i, si in enumerate(sorted_si)}
 
         for i, mask in enumerate(masks):
             if i not in map_to_targets.keys():
                 new_mask_cls[i, num_classes - 1] = 1
                 continue
             gt_category = segments_info[map_to_targets[i]]['category_id']
-            new_mask_cls[i, gt_category] = 1
+            new_mask_cls[i, gt_category] = 2
         
         return new_mask_cls
+
+    def evaluate(self, matched_indices, masks, gt_ann, gt_img):
+        counts = torch.unique(gt_img, return_counts=True)
+        area_map = {object_id.item(): area.item() for object_id, area in zip(*counts)}
+
+        global OBJECT_COUNT
+        OBJECT_COUNT += len(gt_ann['segments_info'])
+
+        for match in zip(*matched_indices):
+            mask_idx, gt_index = match
+
+            mask = masks[mask_idx]
+            mask = (mask.sigmoid() > 0.5)
+
+            si = gt_ann['segments_info'][gt_index]
+            object_id = si['id']
+
+            object_area = area_map[object_id]
+            mask_area = mask.sum().item()
+
+            gt_mask = (gt_img == object_id)
+            intersection = (mask * gt_mask).sum().item()
+            iou = intersection / (mask_area + object_area - intersection)
+
+            if iou > 0.5:
+                global MATCHED
+                MATCHED += 1
+            else:
+                if si['category_id'] not in CATEGORIES_MISS_COUNT:
+                    CATEGORIES_MISS_COUNT[si['category_id']] = 1
+                else:
+                    CATEGORIES_MISS_COUNT[si['category_id']] += 1
 
     def forward(self, batched_inputs):
         """
@@ -516,8 +550,11 @@ class FCCLIP(nn.Module):
                     matched_indices = self.criterion.matcher(outputs_without_aux, targets)[0]
                     del outputs
 
-                    #gt_img = input_per_image['gt_img']
+                    gt_img = input_per_image['gt_img']
+                    gt_img = rgb2id(gt_img)
+                    gt_img = torch.from_numpy(gt_img).to(self.device)
                     #mask_cls_result = self.fix_mask_classification(mask_pred_result, gt_img, gt_ann, num_classes)
+                    self.evaluate(matched_indices, mask_pred_result, gt_ann, gt_img)
                     mask_cls_result = self.fix_mask_classification_with_matching(mask_pred_result, gt_ann, num_classes, matched_indices)
 
 
