@@ -8,6 +8,8 @@ import numpy as np
 from tqdm import tqdm 
 import itertools
 
+from matplotlib import pyplot as plt
+
 import multiprocessing as mp
 from detectron2.utils.visualizer import random_color
 import detectron2.data.transforms as T
@@ -185,6 +187,16 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
 def print_available_datasets():
     print(DatasetCatalog.keys())
 
+def plot(sorted_categories_missed):
+    categories = [item[0] for item in sorted_categories_missed]
+    counts = [item[1] for item in sorted_categories_missed]
+
+    plt.bar(categories, counts)
+    plt.xlabel('Category')
+    plt.ylabel('Miss Count')
+    plt.title('Sorted Per Category Miss Count')
+    plt.savefig("./tests/per_category_miss_count.png")
+
 if __name__ == "__main__":
     args = get_parser().parse_args()
     setup_logger(name="fvcore")
@@ -240,5 +252,5 @@ if __name__ == "__main__":
     print(MATCHED/OBJECT_COUNT)
 
     sorted_categories_missed = sorted(CATEGORIES_MISS_COUNT.items(), key=lambda miss_count: miss_count[1])
-    print(sorted_categories_missed)
+    plot(sorted_categories_missed)
     print("-----------------")
