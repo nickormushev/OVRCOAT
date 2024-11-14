@@ -23,8 +23,8 @@ from detectron2.data import (
     DatasetCatalog
 )
 
-USE_GT = True
-USE_COLORS = False
+USE_GT = False
+USE_COLORS = True
 
 from detectron2.engine.defaults import DefaultPredictor as d2_defaultPredictor
 
@@ -195,8 +195,8 @@ if __name__ == "__main__":
 
     cfg = setup_cfg(args)
 
-    metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
-    #metadata = create_open_vocab_dataset()
+    #metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
+    metadata = create_open_vocab_dataset()
 
     predictor = DefaultPredictor(cfg)
     if USE_GT:
@@ -227,15 +227,17 @@ if __name__ == "__main__":
     # Construct the output file path
     output_file = os.path.join(args.output_dir, args.annotations_file_name)
 
-    from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_MISS_COUNT
-    print(MATCHED/OBJECT_COUNT)
+    if USE_GT:
+        from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_MISS_COUNT
+        print(MATCHED/OBJECT_COUNT)
 
-    sorted_categories_missed = sorted(CATEGORIES_MISS_COUNT.items(), key=lambda miss_count: miss_count[1])
     ## Write annotations to the output file
     with open(output_file, "w") as annotations_file:
-        json.dump({"annotations": pan_annotations,
-                   "missed_objects": MATCHED/OBJECT_COUNT,
-                   "categories_missed": CATEGORIES_MISS_COUNT}, annotations_file, indent=4)
+        if USE_GT:
+            json.dump({"annotations": pan_annotations,
+                       "missed_objects": MATCHED/OBJECT_COUNT,
+                       "categories_missed": CATEGORIES_MISS_COUNT}, annotations_file, indent=4)
+        json.dump({"annotations": pan_annotations}, annotations_file, indent=4)
 
     # Need to save image_id, file_name and segment_info. image_id seems to be the file_name without extension
     # Look at annotations in validation json for example
