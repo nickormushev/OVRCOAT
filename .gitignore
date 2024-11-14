@@ -6,3 +6,4 @@ tests/preds*
 *\.o
 *ninja*
 *lib.linux*
+.vscode*
