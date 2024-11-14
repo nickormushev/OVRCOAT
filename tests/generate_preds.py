@@ -187,16 +187,6 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
 def print_available_datasets():
     print(DatasetCatalog.keys())
 
-def plot(sorted_categories_missed):
-    categories = [item[0] for item in sorted_categories_missed]
-    counts = [item[1] for item in sorted_categories_missed]
-
-    plt.bar(categories, counts)
-    plt.xlabel('Category')
-    plt.ylabel('Miss Count')
-    plt.title('Sorted Per Category Miss Count')
-    plt.savefig("./tests/per_category_miss_count.png")
-
 if __name__ == "__main__":
     args = get_parser().parse_args()
     setup_logger(name="fvcore")
@@ -237,10 +227,15 @@ if __name__ == "__main__":
     # Construct the output file path
     output_file = os.path.join(args.output_dir, args.annotations_file_name)
 
+    from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_MISS_COUNT
+    print(MATCHED/OBJECT_COUNT)
 
+    sorted_categories_missed = sorted(CATEGORIES_MISS_COUNT.items(), key=lambda miss_count: miss_count[1])
     ## Write annotations to the output file
     with open(output_file, "w") as annotations_file:
-        json.dump({"annotations": pan_annotations}, annotations_file, indent=4)
+        json.dump({"annotations": pan_annotations,
+                   "missed_objects": MATCHED/OBJECT_COUNT,
+                   "categories_missed": CATEGORIES_MISS_COUNT}, annotations_file, indent=4)
 
     # Need to save image_id, file_name and segment_info. image_id seems to be the file_name without extension
     # Look at annotations in validation json for example
@@ -248,9 +243,4 @@ if __name__ == "__main__":
     # Segment_info section for sure requires empty area (it is overwritte), category_id. For area maybe set it to 0 to be safe
     # I can also try to calculate it. Area is counts of the unique values
 
-    from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_MISS_COUNT
-    print(MATCHED/OBJECT_COUNT)
-
-    sorted_categories_missed = sorted(CATEGORIES_MISS_COUNT.items(), key=lambda miss_count: miss_count[1])
-    plot(sorted_categories_missed)
     print("-----------------")
