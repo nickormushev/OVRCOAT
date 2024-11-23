@@ -9,6 +9,7 @@ from tqdm import tqdm
 import itertools
 
 from matplotlib import pyplot as plt
+from collections import defaultdict
 
 import multiprocessing as mp
 from detectron2.utils.visualizer import random_color
@@ -23,10 +24,14 @@ from detectron2.data import (
     DatasetCatalog
 )
 
-USE_GT = False
+USE_CLASS_ORACLE = True
+IDX_TO_CLASS = []
+
+USE_EXTENDED_CATEGORIES = False
 USE_COLORS = True
 
 from detectron2.engine.defaults import DefaultPredictor as d2_defaultPredictor
+from panopticapi.utils import rgb2id
 
 class DefaultPredictor(d2_defaultPredictor):
     def set_metadata(self, metadata):
@@ -38,8 +43,9 @@ os.chdir(new_root_dir)
 sys.path.append(new_root_dir)
 
 from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
+from datasets.prepare_ade20k_full_sem_seg import ADE20K_SEM_SEG_FULL_CATEGORIES
 from fcclip import add_maskformer2_config, add_fcclip_config
-from fcclip import MaskFormerPanopticDatasetMapper, COCOPanopticNewBaselineDatasetMapper
+from fcclip import MaskFormerPanopticDatasetMapper
  
 def setup_cfg(args):
     # load config from file and command-line arguments
@@ -131,6 +137,7 @@ def create_open_vocab_dataset():
     DatasetCatalog.register(
         "openvocab_dataset", lambda x: []
     )
+
     return MetadataCatalog.get("openvocab_dataset").set(
         stuff_classes=thing_classes+stuff_classes,
         stuff_colors=thing_colors+stuff_colors,
@@ -139,17 +146,53 @@ def create_open_vocab_dataset():
 
 def get_color_palette(num_colors):
     np.random.seed(42)  # For reproducibility
-    return np.random.randint(0, 255, size=(num_colors, 3), dtype=np.uint8)
+    return np.random.randint(0, 255, size=(num_colors + 1, 3), dtype=np.uint8)
 
-def apply_color_palette(segmentation, palette):
+def get_segment_index_by_id(id, list):
+    if id == 0:
+        return -1
+
+    for i, item in enumerate(list):
+        if item['id'] == id:
+            return i
+    
+    raise Exception("Segment not found")
+
+def process_segment(mask, uid, si, segment_idx, text_mask):
+    y, x = np.where(mask)
+    if len(y) > 0 and len(x) > 0:
+        if uid != 0:
+            category_id = si[segment_idx]['category_id']
+            #isthing = si[segment_idx]['isthing']
+            category_name = IDX_TO_CLASS[category_id].split(",")[0]
+        else:
+            category_name = "empty"
+        centroid_y = int(np.mean(y))
+        centroid_x = int(np.mean(x))
+        font_scale = 0.7  # Increase font size
+        font_thickness = 2  # Make text more bold
+        cv2.putText(text_mask, category_name , (centroid_x, centroid_y),
+            cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
+
+def apply_color_palette(segmentation, palette, dict):
     if len(palette) == 0:
         return segmentation
     h, w = segmentation.shape
     colored_mask = np.zeros((h, w, 3), dtype=np.uint8)
     unique_ids = np.unique(segmentation)
+    text_mask = np.zeros((h, w, 3), dtype=np.uint8)  # Separate mask for text
+    si = dict["segments_info"]
     for uid in unique_ids:
-        colored_mask[segmentation == uid] = palette[uid % len(palette)]
-    return colored_mask
+        mask = segmentation == uid
+        colored_mask[mask] = palette[uid % len(palette)]
+        segment_idx = get_segment_index_by_id(uid, si)
+        process_segment(mask, uid, si, segment_idx, text_mask)
+        if uid != 0:
+            si[segment_idx]['rgb2id'] = rgb2id(palette[uid % len(palette)].tolist())
+
+    combined_mask = cv2.addWeighted(colored_mask, 1, text_mask, 1, 0)
+    dict["segments_info"] = si
+    return combined_mask, dict
 
 
 def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
@@ -157,9 +200,11 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
     # Add gt to predictor before calling it and pass it inside of the 
     # predictor to the model
     img_id = img_file.split(".")[0]
-    if USE_GT:
+    if USE_CLASS_ORACLE:
         # Add gt img_id to predictor
         predictor.gt_img_id = img_id
+        predictor.class_oracle = USE_CLASS_ORACLE
+    
 
     pred = predictor(img)
     dict = {
@@ -169,7 +214,6 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
         "segments_info": pred["panoptic_seg"][1]
     }
 
-    pan_annotations.append(dict)
 
     pan_img_path = os.path.join(output_dir, img_id + ".png")
     pan_img = pred['panoptic_seg'][0].to("cpu").numpy()
@@ -180,8 +224,9 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
 
         # Convert the panoptic segmentation to RGB format
         palette = get_color_palette(len(pred["panoptic_seg"][1]))
-        pan_img = apply_color_palette(pan_img, palette)
+        pan_img, dict = apply_color_palette(pan_img, palette, dict)
 
+    pan_annotations.append(dict)
     cv2.imwrite(pan_img_path, pan_img)
 
 def print_available_datasets():
@@ -195,11 +240,15 @@ if __name__ == "__main__":
 
     cfg = setup_cfg(args)
 
-    #metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
-    metadata = create_open_vocab_dataset()
+    if USE_EXTENDED_CATEGORIES:
+        metadata = create_open_vocab_dataset()
+    else:
+        metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
+
+    IDX_TO_CLASS = metadata.stuff_classes
 
     predictor = DefaultPredictor(cfg)
-    if USE_GT:
+    if USE_CLASS_ORACLE:
         # Add dataset mapper to predictor
         mapper = MaskFormerPanopticDatasetMapper(cfg, True)
         predictor.mapper = mapper
@@ -215,7 +264,6 @@ if __name__ == "__main__":
         
         for path in tqdm(img_paths):
             process_image(predictor, path, os.path.basename(path), args.output_dir, pan_annotations)
-            print()
 
     elif args.input:
         img_file = args.input.split("/")[-1]
@@ -223,20 +271,20 @@ if __name__ == "__main__":
     else:
         raise Exception("Input or Input dir required")
 
-
     # Construct the output file path
     output_file = os.path.join(args.output_dir, args.annotations_file_name)
 
-    if USE_GT:
-        from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_MISS_COUNT
-        print(MATCHED/OBJECT_COUNT)
+    if USE_CLASS_ORACLE:
+        from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_INFO
+        categories_info_ratios = {k: v.miss_count/v.total for k, v in CATEGORIES_INFO.items()}
 
     ## Write annotations to the output file
     with open(output_file, "w") as annotations_file:
-        if USE_GT:
+        if USE_CLASS_ORACLE:
             json.dump({"annotations": pan_annotations,
-                       "missed_objects": MATCHED/OBJECT_COUNT,
-                       "categories_missed": CATEGORIES_MISS_COUNT}, annotations_file, indent=4)
+                       "missed_objects": 1 - MATCHED/OBJECT_COUNT,
+                       "categories_missed_percentage": categories_info_ratios }, annotations_file, indent=4)
+
         json.dump({"annotations": pan_annotations}, annotations_file, indent=4)
 
     # Need to save image_id, file_name and segment_info. image_id seems to be the file_name without extension

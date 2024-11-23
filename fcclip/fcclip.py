@@ -11,6 +11,9 @@ from torch import nn
 from torch.nn import functional as F
 
 import numpy as np
+import matplotlib.pyplot as plt
+import json
+from collections import defaultdict
 
 from panopticapi.utils import rgb2id
 from detectron2.config import configurable
@@ -45,7 +48,19 @@ VILD_PROMPT = [
 
 MATCHED = 0
 OBJECT_COUNT = 0
-CATEGORIES_MISS_COUNT = {}
+
+class CategoryInfo:
+    def __init__(self, total = 0, miss_count = 0):
+        self.total = total
+        self.miss_count = miss_count
+
+    def __str__(self):
+        return f'{self.name}: {self.total} - {self.miss_count}'
+
+    def __repr__(self):
+        return str(self)
+
+CATEGORIES_INFO = defaultdict(CategoryInfo)
 
 @META_ARCH_REGISTRY.register()
 class FCCLIP(nn.Module):
@@ -361,6 +376,8 @@ class FCCLIP(nn.Module):
             if i not in map_to_targets.keys():
                 new_mask_cls[i, num_classes - 1] = 1
                 continue
+            if i > 249:
+                print(i)
             gt_category = segments_info[map_to_targets[i]]['category_id']
             new_mask_cls[i, gt_category] = 2
         
@@ -389,14 +406,12 @@ class FCCLIP(nn.Module):
             intersection = (mask * gt_mask).sum().item()
             iou = intersection / (mask_area + object_area - intersection)
 
+            CATEGORIES_INFO[si['category_id']].total += 1
             if iou > 0.5:
                 global MATCHED
                 MATCHED += 1
             else:
-                if si['category_id'] not in CATEGORIES_MISS_COUNT:
-                    CATEGORIES_MISS_COUNT[si['category_id']] = 1
-                else:
-                    CATEGORIES_MISS_COUNT[si['category_id']] += 1
+                CATEGORIES_INFO[si['category_id']].miss_count += 1
 
     def forward(self, batched_inputs):
         """
@@ -474,6 +489,18 @@ class FCCLIP(nn.Module):
             else:
                 raise NotImplementedError
 
+            def visualize_and_save_masks(masks, file_prefix):
+                batch_size, num_masks, height, width = masks.shape
+                for i in range(batch_size):
+                    for j in range(num_masks):
+                        plt.imshow(masks[i, j].cpu().detach().numpy(), cmap='gray')
+                        plt.colorbar()
+                        plt.title(f'Mask {j} for Batch {i}')
+                        plt.savefig(f'./tests/masks/{file_prefix}_batch_{i}_mask_{j}.png')
+                        plt.close()
+
+            #visualize_and_save_masks(mask_for_pooling, 'mask_for_pooling')
+
             out_vocab_cls_results = get_classification_logits(pooled_clip_feature, text_classifier,
                                                  self.backbone.clip_model.logit_scale, num_templates)
             in_vocab_cls_results = mask_cls_results[..., :-1] # remove void
@@ -505,6 +532,9 @@ class FCCLIP(nn.Module):
                 (in_vocab_cls_results ** (1 - beta) * out_vocab_cls_probs**beta).log()
                 * (1 - category_overlapping_mask) # If pixel not seen during training we use this classifier
             )
+
+            json.dump(self.category_overlapping_mask.tolist(), open('train_overlap.json', 'w'))
+
             cls_results = cls_logits_seen + cls_logits_unseen # Combine predictions
 
             # This is used to filtering void predictions.
@@ -539,8 +569,8 @@ class FCCLIP(nn.Module):
                     mask_cls_result = mask_cls_result.to(mask_pred_result)
 
                 # Use oracle to fix classes based on gt
-                use_oracle = input_per_image['gt']
-                if use_oracle:
+                use_class_oracle = input_per_image['class_oracle']
+                if use_class_oracle:
                     num_classes = mask_cls_result.shape[1]
                     instances = input_per_image['instances']
                     gt_ann = input_per_image['gt_ann']
@@ -567,7 +597,7 @@ class FCCLIP(nn.Module):
 
                 # panoptic segmentation inference
                 if self.panoptic_on:
-                    panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result, use_oracle)
+                    panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result, use_class_oracle)
                     processed_results[-1]["panoptic_seg"] = panoptic_r
                 
                 # instance segmentation inference
