@@ -21,12 +21,18 @@ import argparse
 import multiprocessing
 from detectron2.utils.visualizer import ColorMode, Visualizer, random_color
 
+new_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+os.chdir(new_root_dir)
+sys.path.append(new_root_dir)
+
+from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
 import PIL.Image as Image
 
 # If set to False we ignore missmatched classes for true positive calculations for PQ
-CHECK_CLASSIFICATION = False
+CHECK_CLASSIFICATION = True
 # If set to False we ignore VOID class if missclassified for the true postive calculations for PQ
-CHECK_BACKGROUND = False
+CHECK_BACKGROUND = True
+
 
 # TODO: Validate calculations of missed objects again!
 from panopticapi.utils import get_traceback, rgb2id
@@ -260,16 +266,20 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
 
             if iou > 0.5:
                 detected += 1
-                if CHECK_CLASSIFICATION and gt_segms[gt_label]['category_id'] != pred_segms[pred_label]['category_id']:
-                    misslabeled += 1
-                    continue
-
                 # If pred_label for a segment is VOID we skip
                 # This tracks gt objects that exist but are classified as background
                 if CHECK_BACKGROUND and pred_label == VOID:
-                    # What if interescetion is smaller but one object is entirely in
-                    # the other? I don't think it matters since then it would be a missed object
                     missclassified_as_background_count += 1
+                    # There was no mask at this location so object was not detected
+                    detected -= 1
+                    continue
+
+                if CHECK_CLASSIFICATION and gt_segms[gt_label]['category_id'] != pred_segms[pred_label]['category_id']:
+                    CATEGORY_CLASSES = ADE20K_150_CATEGORIES
+                    print(f"GT: {CATEGORY_CLASSES[gt_segms[gt_label]['category_id']]['name']},   \
+Pred: {CATEGORY_CLASSES[pred_segms[pred_label]['category_id']]['name']}, File: {gt_ann['file_name']},\
+GT ID: {gt_label}, Pred ID: {pred_label}")
+                    misslabeled += 1
                     continue
 
                 # If the category_id is not the same we skip. Not in my case
