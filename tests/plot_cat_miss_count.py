@@ -2,7 +2,6 @@ import pandas as pd
 import json
 import matplotlib.pyplot as plt
 
-
 class CategoryInfo:
     def __init__(self, miss_count, in_training_set):
         self.miss_count = miss_count
@@ -26,22 +25,23 @@ def plot(sorted_categories_missed):
     plt.figure(figsize=(15, 12))
     plt.bar(categories, counts)
     plt.xlabel('Category')
-    plt.ylabel('Normalized miss mount')
-    plt.title('Sorted Per Category normalized miss count')
+    plt.ylabel('Miss percentage')
+    plt.title('Per Category miss percentage / normalised miss count')
     plt.xticks(rotation=70)
+    legend_patch = '*<category>* - seen during training'
+    plt.legend([legend_patch], loc="upper left")
     plt.savefig("./fcclip/tests/per_category_miss_count.pdf")
 
 # Read the TSV file
 file_path = './fcclip/datasets/ADEChallengeData2016/objectInfo150.txt'
 objects_150 = pd.read_csv(file_path, sep='\t')
 
-objects_inference = json.load(open("./fcclip/tests/preds-fixed-col/annotations.json"))
+objects_inference = json.load(open("./fcclip/tests/preds-fixed-mask/annotations.json"))
 overlap = json.load(open("./fcclip/tests/train_overlap.json"))
 missed_categories = objects_inference['categories_missed_percentage']
 
 
 objects_150['Idx'] = objects_150['Idx'] - 1
-print(objects_150.head())
 
 idx_to_name = {}
 for _, row in objects_150.iterrows():
