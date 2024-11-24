@@ -44,6 +44,7 @@ class MaskFormerPanopticDatasetMapper(MaskFormerSemanticDatasetMapper):
         image_format,
         ignore_label,
         size_divisibility,
+        random_flip=True,
     ):
         """
         NOTE: this interface is experimental.
@@ -61,6 +62,8 @@ class MaskFormerPanopticDatasetMapper(MaskFormerSemanticDatasetMapper):
             ignore_label=ignore_label,
             size_divisibility=size_divisibility,
         )
+
+        self.random_flip = random_flip
 
     def __call__(self, dataset_dict):
         """
@@ -99,6 +102,10 @@ class MaskFormerPanopticDatasetMapper(MaskFormerSemanticDatasetMapper):
             )
 
         aug_input = T.AugInput(image, sem_seg=sem_seg_gt)
+        # Remove RandomFlip when using the oracle
+        if not self.random_flip:
+            self.tfm_gens = self.tfm_gens[:1]
+
         aug_input, transforms = T.apply_transform_gens(self.tfm_gens, aug_input)
         image = aug_input.image
         if sem_seg_gt is not None:

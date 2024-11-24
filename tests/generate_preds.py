@@ -169,8 +169,8 @@ def process_segment(mask, uid, si, segment_idx, text_mask):
             category_name = "empty"
         centroid_y = int(np.mean(y))
         centroid_x = int(np.mean(x))
-        font_scale = 0.7  # Increase font size
-        font_thickness = 2  # Make text more bold
+        font_scale = 0.4  # Increase font size
+        font_thickness = 1  # Make text more bold
         cv2.putText(text_mask, category_name , (centroid_x, centroid_y),
             cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
@@ -250,7 +250,7 @@ if __name__ == "__main__":
     predictor = DefaultPredictor(cfg)
     if USE_CLASS_ORACLE:
         # Add dataset mapper to predictor
-        mapper = MaskFormerPanopticDatasetMapper(cfg, True)
+        mapper = MaskFormerPanopticDatasetMapper(cfg, True, random_flip=False)
         predictor.mapper = mapper
     predictor.set_metadata(metadata)
 
@@ -284,8 +284,8 @@ if __name__ == "__main__":
             json.dump({"annotations": pan_annotations,
                        "missed_objects": 1 - MATCHED/OBJECT_COUNT,
                        "categories_missed_percentage": categories_info_ratios }, annotations_file, indent=4)
-
-        json.dump({"annotations": pan_annotations}, annotations_file, indent=4)
+        else:
+            json.dump({"annotations": pan_annotations}, annotations_file, indent=4)
 
     # Need to save image_id, file_name and segment_info. image_id seems to be the file_name without extension
     # Look at annotations in validation json for example
