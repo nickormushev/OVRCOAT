@@ -363,25 +363,50 @@ class FCCLIP(nn.Module):
             
         return new_mask_cls
 
-    def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices):
+    # Method used for debugging
+    def save_mask(self, mask, name):
+        plt.imshow(mask.cpu().detach().numpy(), cmap='gray')
+        plt.colorbar()
+        plt.title(f'{name} mask')
+        plt.savefig(f'./tests/{name}.png')
+        plt.close()
+
+    # Method used for debugging
+    def save_targets(self, targets):
+        targets = targets[0]
+        for idx, (label, mask) in enumerate(zip(targets['labels'], targets['masks'])):
+            if label == 41:
+                self.save_mask(mask, f'box_{idx}')
+            if label == 7:
+                self.save_mask(mask, 'mask')
+
+    def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices, gt_img):
         new_mask_cls = torch.zeros((masks.shape[0], num_classes) , device=self.device)
         segments_info = gt_ann['segments_info']
-        preds, targets = indices
-        map_to_targets = {pred.item(): target.item() for pred, target in zip(preds, targets)}
-
-        #sorted_si = sorted(segments_info, key=lambda si: si['area'])
-        #category_to_pos = {si['category_id']: 10 - i for i, si in enumerate(sorted_si)}
+        preds_idx, targets_idx = indices
+        map_to_targets = {pred.item(): target.item() for pred, target in zip(preds_idx, targets_idx)}
 
         for i, mask in enumerate(masks):
             if i not in map_to_targets.keys():
                 new_mask_cls[i, num_classes - 1] = 1
                 continue
-            if i > 249:
-                print(i)
-            gt_category = segments_info[map_to_targets[i]]['category_id']
-            new_mask_cls[i, gt_category] = 2
+
+            target_idx = map_to_targets[i]
+            tgt_mask = (gt_img == segments_info[target_idx]['id'])
+            src_mask = (mask.sigmoid() > 0.5)
+
+            intersection = (src_mask * tgt_mask).sum().item()
+            union = (src_mask.sum().item() + tgt_mask.sum().item() - intersection)
+            iou =  intersection / union
+
+            gt_category = segments_info[target_idx]['category_id']
+
+            # Use IoU as the score for the category so we can use it later 
+            # when deciding which mask we prefer
+            new_mask_cls[i, gt_category] = iou
         
         return new_mask_cls
+    
 
     def evaluate(self, matched_indices, masks, gt_ann, gt_img):
         counts = torch.unique(gt_img, return_counts=True)
@@ -583,9 +608,9 @@ class FCCLIP(nn.Module):
                     gt_img = input_per_image['gt_img']
                     gt_img = rgb2id(gt_img)
                     gt_img = torch.from_numpy(gt_img).to(self.device)
-                    #mask_cls_result = self.fix_mask_classification(mask_pred_result, gt_img, gt_ann, num_classes)
                     self.evaluate(matched_indices, mask_pred_result, gt_ann, gt_img)
-                    mask_cls_result = self.fix_mask_classification_with_matching(mask_pred_result, gt_ann, num_classes, matched_indices)
+                    mask_cls_result = self.fix_mask_classification_with_matching(mask_pred_result, gt_ann,
+                                                                                  num_classes, matched_indices, gt_img)
 
 
                 # semantic segmentation inference
