@@ -14,6 +14,7 @@ from torch.nn import functional as F
 import numpy as np
 import matplotlib.pyplot as plt
 import json
+import pandas as pd
 from collections import defaultdict
 
 from panopticapi.utils import rgb2id
@@ -30,6 +31,7 @@ from matplotlib import cm
 from .modeling.matcher import HungarianMatcher
 import cv2
 from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
+from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 
 from .modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -61,6 +63,9 @@ class MissclassificationInfo:
         self.unseen_missclassified_as_void_count = 0
         self.unseen_missclassified_as_seen_class_count = 0
         self.unseen_missclassified_as_unseen_class_count = 0
+
+        self.void_clip_class = []
+        self.void_gt_class = []
 
     def add(self, predicted_class, seen_classes, gt_class, num_classes):
         is_seen = seen_classes[gt_class]
@@ -97,6 +102,17 @@ class MissclassificationInfo:
         print("-----------------------------------------------------------------------")
         print(f"Seen       | {self.seen_missclassified_as_void_count:>15} | {self.seen_missclassified_as_seen_class_count:>14} | {self.seen_missclassified_as_unseen_class_count:>15}")
         print(f"Unseen     | {self.unseen_missclassified_as_void_count:>15} | {self.unseen_missclassified_as_seen_class_count:>14} | {self.unseen_missclassified_as_unseen_class_count:>15}")
+    
+    def print_void_clip_metrics(self):
+        # Save predictions to file for easy reproduction of results
+        df = pd.DataFrame(list(zip(self.void_clip_class, self.void_gt_class)), columns=['clip', 'gt'])
+        df.to_csv('./tests/void_classification.csv')
+
+        print("Void classification metrics:")
+        print(f"Accuracy: {accuracy_score(self.void_gt_class, self.void_clip_class)}")
+        print(f"Precision: {precision_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
+        print(f"Recall: {recall_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
+        print(f"F1: {f1_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
 
 class CategoryInfo:
     def __init__(self, total = 0, miss_count = 0):
@@ -430,8 +446,10 @@ class FCCLIP(nn.Module):
             if label == 7:
                 self.save_mask(mask, 'mask')
 
-    def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices, gt_img, pred_clfs, cat_overlapping):
+    def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices,
+                                        gt_img, pred_clfs, cat_overlapping, clip_preds):
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
+        clip_preds_np = clip_preds.cpu().detach().numpy()
         new_mask_cls = torch.zeros((masks.shape[0], num_classes) , device=self.device)
         segments_info = gt_ann['segments_info']
         preds_idx, targets_idx = indices
@@ -452,14 +470,21 @@ class FCCLIP(nn.Module):
 
             gt_category = segments_info[target_idx]['category_id']
 
+            global MISSCLASSIFICATION_INFO
             # This is for metrics gathering
             if self.test_cfg.calculate_confusion_matrix and iou > 0.5:
                 pred_clf = np.argmax(pred_clfs_np[i])
-                global MISSCLASSIFICATION_INFO
 
                 # Check if missclassified
                 if pred_clf != gt_category:
                     MISSCLASSIFICATION_INFO.add(pred_clf, cat_overlapping, gt_category, num_classes)
+                
+            if self.test_cfg.calculate_void_clip_classifications and iou > 0.5:
+                pred_clip = np.argmax(clip_preds_np[i])
+                if pred_clf != num_classes - 1:
+                    MISSCLASSIFICATION_INFO.void_clip_class.append(pred_clip)
+                    MISSCLASSIFICATION_INFO.void_gt_class.append(gt_category)
+
 
             # Use IoU as the score for the category so we can use it later 
             # when deciding which mask we prefer
@@ -715,8 +740,8 @@ class FCCLIP(nn.Module):
                     if self.test_cfg.evaluate:
                         self.evaluate(matched_indices, mask_pred_result, gt_ann, gt_img)
                     mask_cls_result = self.fix_mask_classification_with_matching(mask_pred_result, gt_ann,
-                                                                                  num_classes, matched_indices, gt_img,
-                                                                                  mask_cls_result, self.category_overlapping_mask)
+                                                                num_classes, matched_indices, gt_img,
+                                                                mask_cls_result, self.category_overlapping_mask, out_vocab_cls_probs[0])
 
 
                 # Skips last part to increase speed of evaluations if we are not saving outputs

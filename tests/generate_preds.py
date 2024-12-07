@@ -40,6 +40,7 @@ class TestConfig:
 
         # all of the below require the use of the oracle
         self.calculate_confusion_matrix = True
+        self.calculate_void_clip_classifications = True
         self.evaluate = False
         # highlight_missed requires self.evaluate
         self.highlight_missed = False
@@ -299,8 +300,13 @@ if __name__ == "__main__":
         if test_cfg.calculate_confusion_matrix:
             MISSCLASSIFICATION_INFO.print_confusion_matrix()
             MISSCLASSIFICATION_INFO.save_confusion_matrix("./tests/confusion_matrix.txt")
+            print('\n')
+        
+        if test_cfg.calculate_void_clip_classifications:
+            MISSCLASSIFICATION_INFO.print_void_clip_metrics()
 
         categories_info_ratios = {k: v.miss_count/v.total for k, v in CATEGORIES_INFO.items()}
+
 
 
     with open(output_file, "w") as annotations_file:
