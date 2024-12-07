@@ -105,7 +105,9 @@ class MissclassificationInfo:
     
     def print_void_clip_metrics(self):
         # Save predictions to file for easy reproduction of results
-        df = pd.DataFrame(list(zip(self.void_clip_class, self.void_gt_class)), columns=['clip', 'gt'])
+        void_clip_labels = [ADE20K_150_CATEGORIES[category]['name'].split(',')[0] for category in self.void_clip_class]
+        void_gt_labels = [ADE20K_150_CATEGORIES[category]['name'].split(',')[0] for category in self.void_gt_class]
+        df = pd.DataFrame(list(zip(void_clip_labels, void_gt_labels)), columns=['clip', 'gt'])
         df.to_csv('./tests/void_classification.csv')
 
         print("Void classification metrics:")
@@ -446,10 +448,73 @@ class FCCLIP(nn.Module):
             if label == 7:
                 self.save_mask(mask, 'mask')
 
+    def get_mask_iou_and_gt_category(self, mask, gt_img, gt_ann):
+        segments_info = gt_ann['segments_info']
+        binary_mask = (mask.sigmoid() > 0.5)
+        binary_mask_area = binary_mask.sum()
+
+        mask_ids, counts = torch.unique(binary_mask * (gt_img + 1), return_counts=True)
+        best_mask_category_idx = torch.argmax(counts)
+        best_gt_id = mask_ids[best_mask_category_idx] - 1
+
+        best_mask_area = counts[best_mask_category_idx]
+
+        intersection = (binary_mask * (gt_img == best_gt_id)).sum()
+        union = binary_mask_area + best_mask_area - intersection
+        iou = intersection / union
+
+        if iou < 0.5:
+            return iou, None
+
+        for si in segments_info:
+            if si['id'] == best_gt_id:
+                best_gt_category = si['category_id']
+                break
+        
+        return iou, best_gt_category
+
+    # Oracle 3. Just use CLIP on any mask that is considered background
+    def fix_mask_classification_with_clip(self, masks, num_classes, pred_clfs, clip_preds, gt_img, gt_ann):
+        pred_clfs_np = pred_clfs.cpu().detach().numpy()
+        new_mask_cls = pred_clfs
+
+        for i, mask in enumerate(masks):
+            pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
+            iou, _ = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
+            if pred_is_background and iou >= 0.5:
+                new_mask_cls[i, num_classes - 1] = 0
+                new_mask_cls[i, 0:150] = clip_preds[i]
+        
+        return new_mask_cls
+    
+    def confusion_matrix_and_void_clip(self, masks, gt_img, gt_ann, num_classes, pred_clfs, cat_overlapping, clip_preds):
+        clip_preds_np = clip_preds.cpu().detach().numpy()
+        pred_clfs_np = pred_clfs.cpu().detach().numpy()
+        segments_info = gt_ann['segments_info']
+
+        for i, mask in enumerate(masks):
+            iou, best_gt_category = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
+            if iou > 0.5:
+                global MISSCLASSIFICATION_INFO
+                # This is for metrics gathering
+                if self.test_cfg.calculate_confusion_matrix:
+                    pred_clf = np.argmax(pred_clfs_np[i])
+
+                    # Check if missclassified
+                    if pred_clf != best_gt_category:
+                        MISSCLASSIFICATION_INFO.add(pred_clf, cat_overlapping, best_gt_category, num_classes)
+
+                if self.test_cfg.calculate_void_clip_classifications:
+                    pred_clip = np.argmax(clip_preds_np[i])
+                    if pred_clf == num_classes - 1:
+                        MISSCLASSIFICATION_INFO.void_clip_class.append(pred_clip)
+                        MISSCLASSIFICATION_INFO.void_gt_class.append(best_gt_category)
+
+    # oracle 2 uses hungarian matching to predict correct class
     def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices,
                                         gt_img, pred_clfs, cat_overlapping, clip_preds):
-        pred_clfs_np = pred_clfs.cpu().detach().numpy()
-        clip_preds_np = clip_preds.cpu().detach().numpy()
+        #pred_clfs_np = pred_clfs.cpu().detach().numpy()
+        #clip_preds_np = clip_preds.cpu().detach().numpy()
         new_mask_cls = torch.zeros((masks.shape[0], num_classes) , device=self.device)
         segments_info = gt_ann['segments_info']
         preds_idx, targets_idx = indices
@@ -470,20 +535,21 @@ class FCCLIP(nn.Module):
 
             gt_category = segments_info[target_idx]['category_id']
 
-            global MISSCLASSIFICATION_INFO
-            # This is for metrics gathering
-            if self.test_cfg.calculate_confusion_matrix and iou > 0.5:
-                pred_clf = np.argmax(pred_clfs_np[i])
+            # THis checks the metrics only for the best masks but I reimplemented it to check for all masks
+            #global MISSCLASSIFICATION_INFO
+            ## This is for metrics gathering
+            #if self.test_cfg.calculate_confusion_matrix and iou > 0.5:
+            #    pred_clf = np.argmax(pred_clfs_np[i])
 
-                # Check if missclassified
-                if pred_clf != gt_category:
-                    MISSCLASSIFICATION_INFO.add(pred_clf, cat_overlapping, gt_category, num_classes)
-                
-            if self.test_cfg.calculate_void_clip_classifications and iou > 0.5:
-                pred_clip = np.argmax(clip_preds_np[i])
-                if pred_clf != num_classes - 1:
-                    MISSCLASSIFICATION_INFO.void_clip_class.append(pred_clip)
-                    MISSCLASSIFICATION_INFO.void_gt_class.append(gt_category)
+            #    # Check if missclassified
+            #    if pred_clf != gt_category:
+            #        MISSCLASSIFICATION_INFO.add(pred_clf, cat_overlapping, gt_category, num_classes)
+            #    
+            #if self.test_cfg.calculate_void_clip_classifications and iou > 0.5:
+            #    pred_clip = np.argmax(clip_preds_np[i])
+            #    if pred_clf == num_classes - 1:
+            #        MISSCLASSIFICATION_INFO.void_clip_class.append(pred_clip)
+            #        MISSCLASSIFICATION_INFO.void_gt_class.append(gt_category)
 
 
             # Use IoU as the score for the category so we can use it later 
@@ -724,14 +790,16 @@ class FCCLIP(nn.Module):
 
                 # Use oracle to fix classes based on gt
                 self.test_cfg = input_per_image['test_cfg']
-                if self.test_cfg.use_class_oracle:
+                if self.test_cfg.use_oracle:
                     num_classes = mask_cls_result.shape[1]
                     instances = input_per_image['instances']
                     gt_ann = input_per_image['gt_ann']
 
-                    targets = self.prepare_targets([instances], images)
-                    outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs"} 
-                    matched_indices = self.criterion.matcher(outputs_without_aux, targets)[0]
+                    if self.test_cfg.use_class_oracle or self.test_cfg.evaluate:
+                        targets = self.prepare_targets([instances], images)
+                        outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs"} 
+                        matched_indices = self.criterion.matcher(outputs_without_aux, targets)[0]
+
                     del outputs
 
                     gt_img = input_per_image['gt_img']
@@ -739,9 +807,20 @@ class FCCLIP(nn.Module):
                     gt_img = torch.from_numpy(gt_img).to(self.device)
                     if self.test_cfg.evaluate:
                         self.evaluate(matched_indices, mask_pred_result, gt_ann, gt_img)
-                    mask_cls_result = self.fix_mask_classification_with_matching(mask_pred_result, gt_ann,
+                    
+                    if self.test_cfg.calculate_confusion_matrix or self.test_cfg.calculate_void_clip_classifications:
+                        self.confusion_matrix_and_void_clip(mask_pred_result, gt_img, gt_ann, num_classes,
+                                              mask_cls_result, self.category_overlapping_mask, out_vocab_cls_probs[0])
+
+                    if self.test_cfg.use_class_oracle:
+                        mask_cls_result = self.fix_mask_classification_with_matching(mask_pred_result, gt_ann,
                                                                 num_classes, matched_indices, gt_img,
                                                                 mask_cls_result, self.category_overlapping_mask, out_vocab_cls_probs[0])
+                    
+                    if self.test_cfg.use_clip_oracle:
+                        mask_cls_result = self.fix_mask_classification_with_clip(mask_pred_result, num_classes,
+                                                                                 mask_cls_result, out_vocab_cls_probs[0], gt_img, gt_ann)
+                    
 
 
                 # Skips last part to increase speed of evaluations if we are not saving outputs

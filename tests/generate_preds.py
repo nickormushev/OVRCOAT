@@ -33,12 +33,14 @@ class TestConfig:
     def __init__(self):
         self.skip_seen_files = False
         self.use_extended_categories = False
-        self.save_pan_predictions = False
-        self.use_colors = False
+        self.save_pan_predictions = True
+        self.use_colors = True
 
-        self.use_class_oracle = True
+        # all of the below require the use of one of the oracles
+        self.use_clip_oracle = True
+        self.use_class_oracle = False
+        self.use_oracle = self.use_clip_oracle or self.use_class_oracle
 
-        # all of the below require the use of the oracle
         self.calculate_confusion_matrix = True
         self.calculate_void_clip_classifications = True
         self.evaluate = False
@@ -213,10 +215,11 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations, te
     # Add gt to predictor before calling it and pass it inside of the 
     # predictor to the model
     img_id = img_file.split(".")[0]
-    if test_cfg.use_class_oracle:
+    predictor.test_cfg = test_cfg
+
+    if test_cfg.use_oracle:
         # Add gt img_id to predictor
         predictor.gt_img_id = img_id
-        predictor.test_cfg = test_cfg
     
 
     pred = predictor(img)
@@ -265,7 +268,7 @@ if __name__ == "__main__":
 
     IDX_TO_CLASS = metadata.stuff_classes
     predictor = DefaultPredictor(cfg)
-    if test_cfg.use_class_oracle:
+    if test_cfg.use_oracle:
         # Add dataset mapper to predictor
         mapper = MaskFormerPanopticDatasetMapper(cfg, True, random_flip=False)
         predictor.mapper = mapper
@@ -294,7 +297,7 @@ if __name__ == "__main__":
     # Construct the output file path
     output_file = os.path.join(args.output_dir, args.annotations_file_name)
 
-    if test_cfg.use_class_oracle:
+    if test_cfg.use_oracle:
         from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_INFO, MISSCLASSIFICATION_INFO
 
         if test_cfg.calculate_confusion_matrix:
