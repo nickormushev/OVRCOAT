@@ -71,6 +71,7 @@ class PQStatObjectRecognition():
 
             self.total_objects_gt = 0.0
             self.total_objects_pred = 0.0
+            self.found_gt = []
         
         def calc_percentages(self):
             self.not_found_objects_percent = self.not_found_objects / self.total_objects_gt
@@ -96,9 +97,13 @@ class PQStat():
         
         return self
     
-    def get_top_n_highest_mistaken_as_background_imgs(self, n: int):
-        sorted_img_ids = sorted(self.obj_recogn_per_img.items(),
-                             key=lambda x: x[1].mislabeled_objects_percent, reverse=True)
+    def get_top_n_images_by_criteria(self, n: int, criteria: str = "missed"):
+        if criteria == "missed":
+            sorted_img_ids = sorted(self.obj_recogn_per_img.items(),
+                                    key=lambda x: x[1].not_found_objects_percent, reverse=True)
+        else:
+            sorted_img_ids = sorted(self.obj_recogn_per_img.items(),
+                                    key=lambda x: x[1].mislabeled_objects_percent, reverse=True)
         return sorted_img_ids[:n]
     
     def object_detection_percentage_info(self):
@@ -274,11 +279,14 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                     detected -= 1
                     continue
 
+                gt_category_id = gt_segms[gt_label]['category_id']
+                CATEGORY_CLASSES = ADE20K_150_CATEGORIES
+                pq_stat.obj_recogn_per_img[gt_ann['image_id']].found_gt += [(CATEGORY_CLASSES[gt_category_id]['name'], gt_category_id)] 
+
                 if CHECK_CLASSIFICATION and gt_segms[gt_label]['category_id'] != pred_segms[pred_label]['category_id']:
-                    CATEGORY_CLASSES = ADE20K_150_CATEGORIES
-                    print(f"GT: {CATEGORY_CLASSES[gt_segms[gt_label]['category_id']]['name']},   \
-Pred: {CATEGORY_CLASSES[pred_segms[pred_label]['category_id']]['name']}, File: {gt_ann['file_name']},\
-GT ID: {gt_label}, Pred ID: {pred_label}")
+#                    print(f"GT: {CATEGORY_CLASSES[gt_segms[gt_label]['category_id']]['name']},   \
+#Pred: {CATEGORY_CLASSES[pred_segms[pred_label]['category_id']]['name']}, File: {gt_ann['file_name']},\
+#GT ID: {gt_label}, Pred ID: {pred_label}")
                     misslabeled += 1
                     continue
 
@@ -395,6 +403,11 @@ def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
 
     pq_stat = pq_compute_multi_core(matched_annotations_list, gt_folder, pred_folder, categories)
 
+
+    found_objects = { img_id: obj_recogn.found_gt for img_id, obj_recogn in pq_stat.obj_recogn_per_img.items()}
+
+    json.dump(found_objects, open("found-objects-fixed.json", "w"))
+
     print("Per image panoptic quality metrics: ")
     object_detection_stats = pq_stat.object_detection_percentage_info()
     print("Percentages stats: ")
@@ -402,10 +415,10 @@ def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
     
     print("-" * 50)
     
-    #top_10 = pq_stat.get_top_n_highest_mistaken_as_background_imgs(10)
-    #for img in top_10:
-    #    print(f"Image ID: {img[0]}, False Background percentage: {
-    #        pq_stat.obj_recogn_per_img[img[0]].object_mistaken_as_background}")
+    top_n = pq_stat.get_top_n_images_by_criteria(20, "misslabeled")
+    for img in top_n:
+        print(f"Image ID: {img[0]}, misslabeled percentage: {
+            pq_stat.obj_recogn_per_img[img[0]].mislabeled_objects_percent}")
 
     metrics = [("All", None), ("Things", True), ("Stuff", False)]
     results = {}
