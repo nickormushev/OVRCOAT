@@ -7,6 +7,7 @@ Reference: https://github.com/facebookresearch/Mask2Former/blob/main/mask2former
 from typing import Tuple
 
 import torch
+import random
 from torch import nn
 from torch.nn import functional as F
 
@@ -25,8 +26,10 @@ from detectron2.structures import Boxes, ImageList, Instances, BitMasks
 from detectron2.utils.memory import retry_if_cuda_oom
 
 from .modeling.criterion import SetCriterion
+from matplotlib import cm
 from .modeling.matcher import HungarianMatcher
-
+import cv2
+from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
 
 from .modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -407,13 +410,53 @@ class FCCLIP(nn.Module):
         
         return new_mask_cls
     
+    def highlight_img_segments(self, gt_img, gt_ann, missed_ids, filename):
+        gt_img_np = gt_img.cpu().numpy()
+       
+        highlighted_img = cv2.imread(gt_ann['file_name'])
+        text_img = np.zeros((*gt_img_np.shape, 3), dtype=np.uint8)
 
+        unique_ids = np.unique(gt_img_np)
+
+        colors = {unique_id: [random.randint(0, 255) for _ in range(3)] for unique_id in unique_ids}
+
+        fog_overlay = np.zeros_like(highlighted_img) + 255
+        for unique_id in unique_ids:
+            mask = gt_img_np == unique_id
+            fog_overlay[mask] = colors[unique_id]
+            if unique_id == 0:
+                continue
+
+            y, x = np.where(mask)
+            if len(y) > 0 and len(x) > 0:
+                for si in gt_ann['segments_info']:
+                    if si['id'] == unique_id:
+                        category = si['category_id']
+                        label = f"{ADE20K_150_CATEGORIES[category]['name'].split(',')[0]}"
+                        break
+                centroid_y = int(np.mean(y))
+                centroid_x = int(np.mean(x))
+                cv2.putText(text_img, label, (centroid_x, centroid_y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+
+            if unique_id in missed_ids.keys():
+                fog_overlay[mask] = [0,0,0]
+
+            
+
+        alpha = 1  # Transparency factor
+        highlighted_img = cv2.addWeighted(highlighted_img, 1 - alpha, fog_overlay, alpha, 0)
+
+        combined_img = cv2.addWeighted(highlighted_img, 1, text_img, 1, 0)
+        output_file = "./tests/highlighted_missed_objects/" + filename
+        cv2.imwrite(output_file, combined_img)
+        
     def evaluate(self, matched_indices, masks, gt_ann, gt_img):
         counts = torch.unique(gt_img, return_counts=True)
         area_map = {object_id.item(): area.item() for object_id, area in zip(*counts)}
 
         global OBJECT_COUNT
         OBJECT_COUNT += len(gt_ann['segments_info'])
+        current_not_matched = {}
 
         for match in zip(*matched_indices):
             mask_idx, gt_index = match
@@ -436,7 +479,11 @@ class FCCLIP(nn.Module):
                 global MATCHED
                 MATCHED += 1
             else:
+                current_not_matched[si['id']] = si['category_id']
                 CATEGORIES_INFO[si['category_id']].miss_count += 1
+        
+        if len(current_not_matched) > 0:
+            self.highlight_img_segments(gt_img, gt_ann, current_not_matched, gt_ann['image_id'] + ".png")
 
     def forward(self, batched_inputs):
         """

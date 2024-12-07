@@ -7,3 +7,6 @@ tests/preds*
 *ninja*
 *lib.linux*
 .vscode*
+*missed_objects*
+*examples*
+*box-masks*
