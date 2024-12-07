@@ -52,6 +52,52 @@ VILD_PROMPT = [
 MATCHED = 0
 OBJECT_COUNT = 0
 
+class MissclassificationInfo:
+    def __init__(self):
+        self.seen_missclassified_as_void_count = 0
+        self.seen_missclassified_as_seen_class_count = 0
+        self.seen_missclassified_as_unseen_class_count = 0
+    
+        self.unseen_missclassified_as_void_count = 0
+        self.unseen_missclassified_as_seen_class_count = 0
+        self.unseen_missclassified_as_unseen_class_count = 0
+
+    def add(self, predicted_class, seen_classes, gt_class, num_classes):
+        is_seen = seen_classes[gt_class]
+        is_void = predicted_class == num_classes - 1
+
+        is_pred_seen = seen_classes[predicted_class] if not is_void else False
+
+        if is_seen:
+            if is_void:
+                self.seen_missclassified_as_void_count += 1
+            elif is_pred_seen:
+                self.seen_missclassified_as_seen_class_count += 1
+            else:
+                self.seen_missclassified_as_unseen_class_count += 1
+        else:
+            if is_void:
+                self.unseen_missclassified_as_void_count += 1
+            elif is_pred_seen:
+                self.unseen_missclassified_as_seen_class_count += 1
+            else:
+                self.unseen_missclassified_as_unseen_class_count += 1
+
+    def save_confusion_matrix(self, filename):
+        with open(filename, 'w') as f:
+            f.write("Confusion Matrix:\n")
+            f.write("            | Predicted Void | Predicted Seen | Predicted Unseen\n")
+            f.write("-----------------------------------------------------------------------\n")
+            f.write(f"Seen       | {self.seen_missclassified_as_void_count:>15} | {self.seen_missclassified_as_seen_class_count:>14} | {self.seen_missclassified_as_unseen_class_count:>15}\n")
+            f.write(f"Unseen     | {self.unseen_missclassified_as_void_count:>15} | {self.unseen_missclassified_as_seen_class_count:>14} | {self.unseen_missclassified_as_unseen_class_count:>15}\n")
+
+    def print_confusion_matrix(self):
+        print("Confusion Matrix:")
+        print("            | Predicted Void | Predicted Seen | Predicted Unseen")
+        print("-----------------------------------------------------------------------")
+        print(f"Seen       | {self.seen_missclassified_as_void_count:>15} | {self.seen_missclassified_as_seen_class_count:>14} | {self.seen_missclassified_as_unseen_class_count:>15}")
+        print(f"Unseen     | {self.unseen_missclassified_as_void_count:>15} | {self.unseen_missclassified_as_seen_class_count:>14} | {self.unseen_missclassified_as_unseen_class_count:>15}")
+
 class CategoryInfo:
     def __init__(self, total = 0, miss_count = 0):
         self.total = total
@@ -64,6 +110,7 @@ class CategoryInfo:
         return str(self)
 
 CATEGORIES_INFO = defaultdict(CategoryInfo)
+MISSCLASSIFICATION_INFO = MissclassificationInfo()
 
 @META_ARCH_REGISTRY.register()
 class FCCLIP(nn.Module):
@@ -383,7 +430,8 @@ class FCCLIP(nn.Module):
             if label == 7:
                 self.save_mask(mask, 'mask')
 
-    def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices, gt_img):
+    def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices, gt_img, pred_clfs, cat_overlapping):
+        pred_clfs_np = pred_clfs.cpu().detach().numpy()
         new_mask_cls = torch.zeros((masks.shape[0], num_classes) , device=self.device)
         segments_info = gt_ann['segments_info']
         preds_idx, targets_idx = indices
@@ -403,6 +451,15 @@ class FCCLIP(nn.Module):
             iou =  intersection / union
 
             gt_category = segments_info[target_idx]['category_id']
+
+            # This is for metrics gathering
+            if self.test_cfg.calculate_confusion_matrix and iou > 0.5:
+                pred_clf = np.argmax(pred_clfs_np[i])
+                global MISSCLASSIFICATION_INFO
+
+                # Check if missclassified
+                if pred_clf != gt_category:
+                    MISSCLASSIFICATION_INFO.add(pred_clf, cat_overlapping, gt_category, num_classes)
 
             # Use IoU as the score for the category so we can use it later 
             # when deciding which mask we prefer
@@ -481,8 +538,8 @@ class FCCLIP(nn.Module):
             else:
                 current_not_matched[si['id']] = si['category_id']
                 CATEGORIES_INFO[si['category_id']].miss_count += 1
-        
-        if len(current_not_matched) > 0:
+
+        if self.test_cfg.highlight_missed and len(current_not_matched) > 0:
             self.highlight_img_segments(gt_img, gt_ann, current_not_matched, gt_ann['image_id'] + ".png")
 
     def forward(self, batched_inputs):
@@ -641,8 +698,8 @@ class FCCLIP(nn.Module):
                     mask_cls_result = mask_cls_result.to(mask_pred_result)
 
                 # Use oracle to fix classes based on gt
-                use_class_oracle = input_per_image['class_oracle']
-                if use_class_oracle:
+                self.test_cfg = input_per_image['test_cfg']
+                if self.test_cfg.use_class_oracle:
                     num_classes = mask_cls_result.shape[1]
                     instances = input_per_image['instances']
                     gt_ann = input_per_image['gt_ann']
@@ -655,10 +712,16 @@ class FCCLIP(nn.Module):
                     gt_img = input_per_image['gt_img']
                     gt_img = rgb2id(gt_img)
                     gt_img = torch.from_numpy(gt_img).to(self.device)
-                    self.evaluate(matched_indices, mask_pred_result, gt_ann, gt_img)
+                    if self.test_cfg.evaluate:
+                        self.evaluate(matched_indices, mask_pred_result, gt_ann, gt_img)
                     mask_cls_result = self.fix_mask_classification_with_matching(mask_pred_result, gt_ann,
-                                                                                  num_classes, matched_indices, gt_img)
+                                                                                  num_classes, matched_indices, gt_img,
+                                                                                  mask_cls_result, self.category_overlapping_mask)
 
+
+                # Skips last part to increase speed of evaluations if we are not saving outputs
+                if not self.test_cfg.save_pan_predictions:
+                    return [None]
 
                 # semantic segmentation inference
                 if self.semantic_on:
@@ -669,7 +732,7 @@ class FCCLIP(nn.Module):
 
                 # panoptic segmentation inference
                 if self.panoptic_on:
-                    panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result, use_class_oracle)
+                    panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result, self.test_cfg.use_class_oracle)
                     processed_results[-1]["panoptic_seg"] = panoptic_r
                 
                 # instance segmentation inference

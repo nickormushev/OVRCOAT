@@ -29,9 +29,26 @@ IDX_TO_CLASS = []
 
 USE_EXTENDED_CATEGORIES = False
 USE_COLORS = True
+SKIP_SEEN_FILES = False
+
 
 from detectron2.engine.defaults import DefaultPredictor as d2_defaultPredictor
 from panopticapi.utils import rgb2id
+
+class TestConfig:
+    def __init__(self):
+        self.skip_seen_files = False
+        self.use_extended_categories = False
+        self.save_pan_predictions = False
+        self.use_colors = True
+
+        self.use_class_oracle = True
+
+        # all of the below require the use of the oracle
+        self.calculate_confusion_matrix = True
+        self.evaluate = False
+        # highlight_missed requires self.evaluate
+        self.highlight_missed = False
 
 class DefaultPredictor(d2_defaultPredictor):
     def set_metadata(self, metadata):
@@ -195,18 +212,23 @@ def apply_color_palette(segmentation, palette, dict):
     return combined_mask, dict
 
 
-def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
+def process_image(predictor, img_path, img_file, output_dir, pan_annotations, test_cfg):
     img = read_image(img_path, format="BGR")
+
     # Add gt to predictor before calling it and pass it inside of the 
     # predictor to the model
     img_id = img_file.split(".")[0]
-    if USE_CLASS_ORACLE:
+    if test_cfg.use_class_oracle:
         # Add gt img_id to predictor
         predictor.gt_img_id = img_id
-        predictor.class_oracle = USE_CLASS_ORACLE
+        predictor.test_cfg = test_cfg
     
 
     pred = predictor(img)
+
+    if not test_cfg.save_pan_predictions:
+        return
+
     dict = {
         "image_id": img_id,
         "file_name": img_id + ".png",
@@ -214,11 +236,10 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations):
         "segments_info": pred["panoptic_seg"][1]
     }
 
-
     pan_img_path = os.path.join(output_dir, img_id + ".png")
     pan_img = pred['panoptic_seg'][0].to("cpu").numpy()
 
-    if USE_COLORS:
+    if test_cfg.use_colors:
         # Using colors breaks the mapping from the color to the segments_info
         # This can be fixed but for now I just generated both greyscale and rgb options
 
@@ -238,17 +259,18 @@ if __name__ == "__main__":
     logger = setup_logger()
     logger.info("Arguments: " + str(args))
 
+    test_cfg = TestConfig()
+
     cfg = setup_cfg(args)
 
-    if USE_EXTENDED_CATEGORIES:
+    if test_cfg.use_extended_categories:
         metadata = create_open_vocab_dataset()
     else:
         metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
 
     IDX_TO_CLASS = metadata.stuff_classes
-
     predictor = DefaultPredictor(cfg)
-    if USE_CLASS_ORACLE:
+    if test_cfg.use_class_oracle:
         # Add dataset mapper to predictor
         mapper = MaskFormerPanopticDatasetMapper(cfg, True, random_flip=False)
         predictor.mapper = mapper
@@ -263,24 +285,32 @@ if __name__ == "__main__":
                       if img_file.endswith((".png", ".jpg"))]
         
         for path in tqdm(img_paths):
-            process_image(predictor, path, os.path.basename(path), args.output_dir, pan_annotations)
+            file_exists = os.path.exists(os.path.join(args.output_dir, os.path.basename(path)))
+            if test_cfg.skip_seen_files and file_exists:
+                continue
+            process_image(predictor, path, os.path.basename(path), args.output_dir, pan_annotations, test_cfg)
 
     elif args.input:
         img_file = args.input.split("/")[-1]
-        process_image(predictor, args.input, img_file, args.output_dir, pan_annotations)
+        process_image(predictor, args.input, img_file, args.output_dir, pan_annotations, test_cfg)
     else:
         raise Exception("Input or Input dir required")
 
     # Construct the output file path
     output_file = os.path.join(args.output_dir, args.annotations_file_name)
 
-    if USE_CLASS_ORACLE:
-        from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_INFO
+    if test_cfg.use_class_oracle:
+        from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_INFO, MISSCLASSIFICATION_INFO
+
+        if test_cfg.calculate_confusion_matrix:
+            MISSCLASSIFICATION_INFO.print_confusion_matrix()
+            MISSCLASSIFICATION_INFO.save_confusion_matrix("./tests/confusion_matrix.txt")
+
         categories_info_ratios = {k: v.miss_count/v.total for k, v in CATEGORIES_INFO.items()}
 
-    ## Write annotations to the output file
+
     with open(output_file, "w") as annotations_file:
-        if USE_CLASS_ORACLE:
+        if test_cfg.evaluate:
             json.dump({"annotations": pan_annotations,
                        "missed_objects": 1 - MATCHED/OBJECT_COUNT,
                        "categories_missed_percentage": categories_info_ratios }, annotations_file, indent=4)
