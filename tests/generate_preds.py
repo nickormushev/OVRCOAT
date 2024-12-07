@@ -24,13 +24,7 @@ from detectron2.data import (
     DatasetCatalog
 )
 
-USE_CLASS_ORACLE = True
 IDX_TO_CLASS = []
-
-USE_EXTENDED_CATEGORIES = False
-USE_COLORS = True
-SKIP_SEEN_FILES = False
-
 
 from detectron2.engine.defaults import DefaultPredictor as d2_defaultPredictor
 from panopticapi.utils import rgb2id
@@ -40,7 +34,7 @@ class TestConfig:
         self.skip_seen_files = False
         self.use_extended_categories = False
         self.save_pan_predictions = False
-        self.use_colors = True
+        self.use_colors = False
 
         self.use_class_oracle = True
 
