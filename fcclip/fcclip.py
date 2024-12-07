@@ -453,18 +453,29 @@ class FCCLIP(nn.Module):
         binary_mask = (mask.sigmoid() > 0.5)
         binary_mask_area = binary_mask.sum()
 
-        mask_ids, counts = torch.unique(binary_mask * (gt_img + 1), return_counts=True)
-        best_mask_category_idx = torch.argmax(counts)
-        best_gt_id = mask_ids[best_mask_category_idx] - 1
+        # IS THIS NORMAL?
+        if binary_mask_area == 0:
+            return 0, None
 
-        best_mask_area = counts[best_mask_category_idx]
+        mask_gt_ids, counts = torch.unique(binary_mask * gt_img, return_counts=True)
+        # Validated that segment ids are not 0 ever. If 0 it is likely background and say iou is 0
+        counts = counts[mask_gt_ids != 0]
+        mask_gt_ids = mask_gt_ids[mask_gt_ids != 0]
+
+        if len(counts) == 0:
+            return 0, None
+
+        best_mask_category_idx = torch.argmax(counts)
+        best_gt_id = mask_gt_ids[best_mask_category_idx]
+
+        best_mask_area = (gt_img == best_gt_id).sum()
 
         intersection = (binary_mask * (gt_img == best_gt_id)).sum()
         union = binary_mask_area + best_mask_area - intersection
         iou = intersection / union
 
         if iou < 0.5:
-            return iou, None
+            return 0, None
 
         for si in segments_info:
             if si['id'] == best_gt_id:
@@ -481,7 +492,7 @@ class FCCLIP(nn.Module):
         for i, mask in enumerate(masks):
             pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
             iou, _ = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
-            if pred_is_background and iou >= 0.5:
+            if pred_is_background and iou > 0.5:
                 new_mask_cls[i, num_classes - 1] = 0
                 new_mask_cls[i, 0:150] = clip_preds[i]
         
@@ -490,7 +501,6 @@ class FCCLIP(nn.Module):
     def confusion_matrix_and_void_clip(self, masks, gt_img, gt_ann, num_classes, pred_clfs, cat_overlapping, clip_preds):
         clip_preds_np = clip_preds.cpu().detach().numpy()
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
-        segments_info = gt_ann['segments_info']
 
         for i, mask in enumerate(masks):
             iou, best_gt_category = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
