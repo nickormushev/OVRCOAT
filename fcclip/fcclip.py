@@ -546,6 +546,7 @@ class FCCLIP(nn.Module):
             gt_category = segments_info[target_idx]['category_id']
 
             # THis checks the metrics only for the best masks but I reimplemented it to check for all masks
+            # TODO: Maybe generate these results as well
             #global MISSCLASSIFICATION_INFO
             ## This is for metrics gathering
             #if self.test_cfg.calculate_confusion_matrix and iou > 0.5:
@@ -718,18 +719,6 @@ class FCCLIP(nn.Module):
                 pooled_clip_feature = self.backbone.visual_prediction_forward(clip_feature, mask_for_pooling)
             else:
                 raise NotImplementedError
-
-            def visualize_and_save_masks(masks, file_prefix):
-                batch_size, num_masks, height, width = masks.shape
-                for i in range(batch_size):
-                    for j in range(num_masks):
-                        plt.imshow(masks[i, j].cpu().detach().numpy(), cmap='gray')
-                        plt.colorbar()
-                        plt.title(f'Mask {j} for Batch {i}')
-                        plt.savefig(f'./tests/masks/{file_prefix}_batch_{i}_mask_{j}.png')
-                        plt.close()
-
-            #visualize_and_save_masks(mask_for_pooling, 'mask_for_pooling')
 
             out_vocab_cls_results = get_classification_logits(pooled_clip_feature, text_classifier,
                                                  self.backbone.clip_model.logit_scale, num_templates)
