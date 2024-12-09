@@ -33,16 +33,20 @@ class TestConfig:
     def __init__(self):
         self.skip_seen_files = False
         self.use_extended_categories = False
-        self.save_pan_predictions = True
-        self.use_colors = True
+        self.save_pan_predictions = False
+        self.use_colors = False
 
-        # all of the below require the use of one of the oracles
-        self.use_clip_oracle = True
+        # TODO: Rename to run_tests
+        # all of the below require run_tests to be true / use oracle
+        self.use_oracle = True
+
+        self.calculate_confusion_matrix = False
+        self.calculate_void_clip_classifications = False
+        self.void_histogram_data = True
+
+        self.use_clip_oracle = False
         self.use_class_oracle = False
-        self.use_oracle = self.use_clip_oracle or self.use_class_oracle
 
-        self.calculate_confusion_matrix = True
-        self.calculate_void_clip_classifications = True
         self.evaluate = False
         # highlight_missed requires self.evaluate
         self.highlight_missed = False
@@ -216,11 +220,7 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations, te
     # predictor to the model
     img_id = img_file.split(".")[0]
     predictor.test_cfg = test_cfg
-
-    if test_cfg.use_oracle:
-        # Add gt img_id to predictor
-        predictor.gt_img_id = img_id
-    
+    predictor.gt_img_id = img_id
 
     pred = predictor(img)
 
