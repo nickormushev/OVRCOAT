@@ -8,6 +8,7 @@ clip_category_prob = 'clip_category_prob'
 
 # Contains also void probability so not really that good for plotting
 pred_category_prob = 'pred_category_prob'
+pred_no_void_category_prob = 'preds_no_void_category_prob'
 category_prob = mask2former_category_prob
 
 def plot_for_category(category_prob, df):
@@ -22,6 +23,9 @@ def plot_for_category(category_prob, df):
         df.loc[bin_els, 'bin'] = str(lower_bound) + ' - ' + str(upper_bound)
 
     method = category_prob.split('_')[0].upper()
+
+    if method == 'PREDS':
+        method = 'FC-CLIP'
 
     VOID_CLASS_ID = 150
     plt.figure(figsize=(10, 9))
@@ -45,3 +49,4 @@ def plot_for_category(category_prob, df):
 
 plot_for_category(mask2former_category_prob, df)
 plot_for_category(clip_category_prob, df)
+plot_for_category(pred_no_void_category_prob, df)

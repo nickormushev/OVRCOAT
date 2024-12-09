@@ -55,6 +55,9 @@ VILD_PROMPT = [
 MATCHED = 0
 OBJECT_COUNT = 0
 
+# ADE20K specific. Is number of classes - 1 otherwise
+VOID_CATEGORY_ID = 150
+
 class MissclassificationInfo:
     def __init__(self):
         self.seen_missclassified_as_void_count = 0
@@ -449,33 +452,19 @@ class FCCLIP(nn.Module):
             if label == 7:
                 self.save_mask(mask, 'mask')
 
-    def save_mask(self, mask, filename):
-        mask_np = mask.cpu().numpy()
-        plt.imshow(mask_np, cmap='gray')
-        plt.title(f'Mask: {filename}')
-        plt.axis('off')
-        plt.savefig(f'./tests/{filename}.png')
-        plt.close()
-
     def get_mask_iou_and_gt_category(self, mask, gt_img, gt_ann):
         segments_info = gt_ann['segments_info']
         binary_mask = (mask.sigmoid() > 0.5)
         binary_mask_area = binary_mask.sum()
 
-        # IS THIS NORMAL? Mask seems to be even most places so it doesn't focus anything
-        # I guess it can happen
+        # Masks sometimes don't focus anything. 
+        # I believe they are looking for objects not present in the image
         if binary_mask_area == 0:
-            #self.save_mask(mask, 'zero_area_mask')
             return 0, None
 
-        mask_gt_ids, counts = torch.unique(binary_mask * gt_img, return_counts=True)
-        # Validated that segment ids are not 0 ever. If 0 it is likely background and say iou is 0
+        mask_gt_ids, counts = torch.unique(binary_mask * (gt_img + 1), return_counts=True)
         counts = counts[mask_gt_ids != 0]
-        mask_gt_ids = mask_gt_ids[mask_gt_ids != 0]
-
-        # This case we have no overlap with any segment and are void
-        if len(counts) == 0:
-            return 0, None
+        mask_gt_ids = mask_gt_ids[mask_gt_ids != 0] - 1
 
         best_mask_category_idx = torch.argmax(counts)
         best_gt_id = mask_gt_ids[best_mask_category_idx]
@@ -486,8 +475,11 @@ class FCCLIP(nn.Module):
         union = binary_mask_area + best_mask_area - intersection
         iou = intersection / union
 
-        if iou < 0.5:
-            return 0, None
+        # I validated that segment ids are never 0 in validation set at least
+        # So this means that the mask is not overlapping with any object but with background
+        # So we return void
+        if best_gt_id == 0:
+            return iou, VOID_CATEGORY_ID
 
         for si in segments_info:
             if si['id'] == best_gt_id:
@@ -516,12 +508,12 @@ class FCCLIP(nn.Module):
 
         for i, mask in enumerate(masks):
             iou, best_gt_category = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
-            if iou > 0.5:
+            if iou > 0.5 and best_gt_category != VOID_CATEGORY_ID:
                 global MISSCLASSIFICATION_INFO
                 # This is for metrics gathering
-                if self.test_cfg.calculate_confusion_matrix:
-                    pred_clf = np.argmax(pred_clfs_np[i])
+                pred_clf = np.argmax(pred_clfs_np[i])
 
+                if self.test_cfg.calculate_confusion_matrix:
                     # Check if missclassified
                     if pred_clf != best_gt_category:
                         MISSCLASSIFICATION_INFO.add(pred_clf, cat_overlapping, best_gt_category, num_classes)
@@ -656,26 +648,35 @@ class FCCLIP(nn.Module):
         if self.test_cfg.highlight_missed and len(current_not_matched) > 0:
             self.highlight_img_segments(gt_img, gt_ann, current_not_matched, gt_ann['image_id'] + ".png")
 
-    def void_histogram_data(self, masks, preds, clip_pred, mask2former_preds, gt_img, gt_ann, void_prob):
+    def void_histogram_data(self, masks, preds, preds_no_void, clip_pred, mask2former_preds, gt_img, gt_ann, void_prob):
         np_preds = preds.cpu().detach().numpy()
         np_clip = clip_pred.cpu().detach().numpy()
         np_mask2former = mask2former_preds.cpu().detach().numpy()
+        np_void_prob = void_prob.cpu().detach().numpy()
+        np_preds_no_void = preds_no_void.cpu().detach().numpy()
 
-        df = pd.DataFrame(columns=['gt_category', 'pred_category', 'pred_category_prob', 'pred_second_best_category',
-                'pred_second_best_prob', 'clip_category', 'clip_category_prob', 'clip_second_best_category',
-                'clip_second_best_prob', 'mask2former_category', 'mask2former_category_prob',
-                'mask2former_second_best_category', 'mask2former_second_best_prob', 'gt_iou', void_prob])
+        df = pd.DataFrame(columns=['gt_category',
+                'pred_category', 'pred_category_prob', 'pred_second_best_category', 'pred_second_best_prob',
+                'preds_no_void_category', 'preds_no_void_category_prob', 'preds_no_void_second_best_category', 'preds_no_void_second_best_prob',
+                'clip_category', 'clip_category_prob', 'clip_second_best_category','clip_second_best_prob',
+                'mask2former_category', 'mask2former_category_prob', 'mask2former_second_best_category', 'mask2former_second_best_prob',
+                'gt_iou', 'void_prob'])
 
         for i, mask in enumerate(masks):
             iou, gt_cat = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
 
             if gt_cat is None:
-                gt_cat = "VOID"
+                gt_cat = VOID_CATEGORY_ID
 
             pred_cat = np.argmax(np_preds[i])
             pred_cat_prob = np_preds[i, pred_cat]
             pred_cat_second_best = np.argsort(np_preds[i])[-2]
             pred_cat_second_best_prob = np_preds[i, pred_cat_second_best]
+
+            preds_no_void_cat = np.argmax(np_preds_no_void[i])
+            preds_no_void_cat_prob = np_preds_no_void[i, preds_no_void_cat]
+            preds_no_void_cat_second_best = np.argsort(np_preds_no_void[i])[-2]
+            preds_no_void_cat_second_best_prob = np_preds_no_void[i, preds_no_void_cat_second_best]
 
             clip_cat = np.argmax(np_clip[i])
             clip_cat_prob = np_clip[i, clip_cat]
@@ -691,11 +692,13 @@ class FCCLIP(nn.Module):
 
             df_temp = pd.DataFrame({'gt_category': gt_cat, 'pred_category': pred_cat, 'pred_category_prob': pred_cat_prob,
                             'pred_second_best_category': pred_cat_second_best, 'pred_second_best_prob': pred_cat_second_best_prob,
+                            'preds_no_void_category': preds_no_void_cat, 'preds_no_void_category_prob': preds_no_void_cat_prob,
+                            'preds_no_void_second_best_category': preds_no_void_cat_second_best, 'preds_no_void_second_best_prob': preds_no_void_cat_second_best_prob,
                             'clip_category': clip_cat, 'clip_category_prob': clip_cat_prob, 'clip_second_best_category': clip_cat_second_best,
                             'clip_second_best_prob': clip_cat_second_best_prob, 'mask2former_category': mask2former_cat,
                             'mask2former_category_prob': mask2former_cat_prob, 'mask2former_second_best_category': mask2former_cat_second_best,
                             'mask2former_second_best_prob': mask2former_cat_second_best_prob, 'gt_iou': iou,
-                            'void_prob': void_prob}, index=[0])
+                            'void_prob': np_void_prob[i].item()}, index=[0])
             
             df = pd.concat([df, df_temp])
         
@@ -865,7 +868,7 @@ class FCCLIP(nn.Module):
                     gt_img = torch.from_numpy(gt_img).to(self.device)
 
                     if self.test_cfg.void_histogram_data:
-                        self.void_histogram_data(mask_pred_result, cls_prob_no_void[0],
+                        self.void_histogram_data(mask_pred_result, mask_cls_probs[0], cls_prob_no_void[0],
                                          out_vocab_cls_probs[0], in_vocab_cls_results[0], gt_img, gt_ann, is_void_prob[0])
 
                     if self.test_cfg.evaluate:
