@@ -31,7 +31,7 @@ from .modeling.criterion import SetCriterion
 from matplotlib import cm
 from .modeling.matcher import HungarianMatcher
 import cv2
-from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
+from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES, ADE20k_COLORS
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 
 from .modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
@@ -577,41 +577,52 @@ class FCCLIP(nn.Module):
         gt_img_np = gt_img.cpu().numpy()
        
         highlighted_img = cv2.imread(gt_ann['file_name'])
-        text_img = np.zeros((*gt_img_np.shape, 3), dtype=np.uint8)
+        text_img = np.zeros((*gt_img_np.shape, 4), dtype=np.uint8)
 
         unique_ids = np.unique(gt_img_np)
 
-        colors = {unique_id: [random.randint(0, 255) for _ in range(3)] for unique_id in unique_ids}
+        fog_overlay = np.zeros_like(highlighted_img)
+        fog_mask = np.zeros_like(gt_img_np, dtype=bool)
 
-        fog_overlay = np.zeros_like(highlighted_img) + 255
         for unique_id in unique_ids:
             mask = gt_img_np == unique_id
-            fog_overlay[mask] = colors[unique_id]
             if unique_id == 0:
                 continue
 
-            y, x = np.where(mask)
-            if len(y) > 0 and len(x) > 0:
+            if unique_id in missed_ids.keys():
                 for si in gt_ann['segments_info']:
                     if si['id'] == unique_id:
                         category = si['category_id']
                         label = f"{ADE20K_150_CATEGORIES[category]['name'].split(',')[0]}"
                         break
-                centroid_y = int(np.mean(y))
-                centroid_x = int(np.mean(x))
-                cv2.putText(text_img, label, (centroid_x, centroid_y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
-
-            if unique_id in missed_ids.keys():
-                fog_overlay[mask] = [0,0,0]
-
             
+                y, x = np.where(mask)
+                if len(y) > 0 and len(x) > 0:
+                    centroid_y = int(np.mean(y))
+                    centroid_x = int(np.mean(x))
+                    text_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
+                    text_w, text_h = text_size
 
-        alpha = 1  # Transparency factor
-        highlighted_img = cv2.addWeighted(highlighted_img, 1 - alpha, fog_overlay, alpha, 0)
+                    top_left = (max(0, centroid_x), max(0, centroid_y - text_h))
+                    bottom_right = (min(text_img.shape[1], centroid_x + text_w), min(text_img.shape[0], centroid_y))
 
-        combined_img = cv2.addWeighted(highlighted_img, 1, text_img, 1, 0)
+                    cv2.rectangle(text_img, top_left, bottom_right, (0, 0, 0, 123), cv2.FILLED)
+                    cv2.putText(text_img, label, (centroid_x, centroid_y), cv2.FONT_HERSHEY_SIMPLEX,
+                                 0.4, (255, 255, 255, 123), thickness=1, lineType=cv2.LINE_AA)
+
+                fog_overlay[mask] = ADE20k_COLORS[category]
+                fog_mask[mask] = True
+
+        alpha = 0.8  # Transparency factor
+        highlighted_img[fog_mask] = cv2.addWeighted(highlighted_img[fog_mask], 1-alpha, fog_overlay[fog_mask], alpha, 0)
+
+        b_channel, g_channel, r_channel, a_channel = cv2.split(text_img)
+        text_img_rgb = cv2.merge((b_channel, g_channel, r_channel))
+        mask = a_channel != 0
+
+        highlighted_img[mask] = cv2.addWeighted(highlighted_img[mask], 0.2, text_img_rgb[mask], 0.8, 0)
         output_file = "./tests/highlighted_missed_objects/" + filename
-        cv2.imwrite(output_file, combined_img)
+        cv2.imwrite(output_file, highlighted_img)
         
     def evaluate(self, matched_indices, masks, gt_ann, gt_img):
         counts = torch.unique(gt_img, return_counts=True)
