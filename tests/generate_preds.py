@@ -33,19 +33,26 @@ class TestConfig:
     def __init__(self):
         self.skip_seen_files = False
         self.use_extended_categories = False
-        self.save_pan_predictions = False
+        self.save_pan_predictions = True
         self.use_colors = False
 
         # TODO: Rename to run_tests
         # all of the below require run_tests to be true / use oracle
         self.use_oracle = True
 
+        self.use_clip_oracle = True
+        self.use_class_oracle = False
+
         self.calculate_confusion_matrix = False
         self.calculate_void_clip_classifications = False
-        self.void_histogram_data = True
 
-        self.use_clip_oracle = False
-        self.use_class_oracle = False
+        # Metrics from above ran only for masks from hungarian matching
+        # require class oracle
+        self.calculate_confusion_matrix_best = False
+        self.calculate_void_clip_classifications_best = False
+
+        self.void_histogram_data = False
+
 
         self.evaluate = False
         # highlight_missed requires self.evaluate
@@ -298,7 +305,7 @@ if __name__ == "__main__":
     output_file = os.path.join(args.output_dir, args.annotations_file_name)
 
     if test_cfg.use_oracle:
-        from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_INFO, MISSCLASSIFICATION_INFO
+        from fcclip.fcclip import MATCHED, OBJECT_COUNT, CATEGORIES_INFO, MISSCLASSIFICATION_INFO, MISSCLASSIFICATION_INFO_BEST_MASKS
 
         if test_cfg.calculate_confusion_matrix:
             MISSCLASSIFICATION_INFO.print_confusion_matrix()
@@ -307,6 +314,13 @@ if __name__ == "__main__":
         
         if test_cfg.calculate_void_clip_classifications:
             MISSCLASSIFICATION_INFO.print_void_clip_metrics()
+
+        if test_cfg.calculate_confusion_matrix_best:
+            MISSCLASSIFICATION_INFO_BEST_MASKS.print_confusion_matrix()
+            MISSCLASSIFICATION_INFO_BEST_MASKS.save_confusion_matrix("./tests/confusion_matrix_best_masks.txt")
+
+        if test_cfg.calculate_void_clip_classifications_best:
+            MISSCLASSIFICATION_INFO_BEST_MASKS.print_void_clip_metrics("./tests/void_clip_classification_best.csv")
 
         categories_info_ratios = {k: v.miss_count/v.total for k, v in CATEGORIES_INFO.items()}
 

@@ -107,12 +107,12 @@ class MissclassificationInfo:
         print(f"Seen       | {self.seen_missclassified_as_void_count:>15} | {self.seen_missclassified_as_seen_class_count:>14} | {self.seen_missclassified_as_unseen_class_count:>15}")
         print(f"Unseen     | {self.unseen_missclassified_as_void_count:>15} | {self.unseen_missclassified_as_seen_class_count:>14} | {self.unseen_missclassified_as_unseen_class_count:>15}")
     
-    def print_void_clip_metrics(self):
+    def print_void_clip_metrics(self, file = "./tests/void_classification.csv"):
         # Save predictions to file for easy reproduction of results
         void_clip_labels = [ADE20K_150_CATEGORIES[category]['name'].split(',')[0] for category in self.void_clip_class]
         void_gt_labels = [ADE20K_150_CATEGORIES[category]['name'].split(',')[0] for category in self.void_gt_class]
         df = pd.DataFrame(list(zip(void_clip_labels, void_gt_labels)), columns=['clip', 'gt'])
-        df.to_csv('./tests/void_classification.csv')
+        df.to_csv(file)
 
         print("Void classification metrics:")
         print(f"Accuracy: {accuracy_score(self.void_gt_class, self.void_clip_class)}")
@@ -133,6 +133,7 @@ class CategoryInfo:
 
 CATEGORIES_INFO = defaultdict(CategoryInfo)
 MISSCLASSIFICATION_INFO = MissclassificationInfo()
+MISSCLASSIFICATION_INFO_BEST_MASKS = MissclassificationInfo()
 
 @META_ARCH_REGISTRY.register()
 class FCCLIP(nn.Module):
@@ -491,14 +492,16 @@ class FCCLIP(nn.Module):
     # Oracle 3. Just use CLIP on any mask that is considered background
     def fix_mask_classification_with_clip(self, masks, num_classes, pred_clfs, clip_preds, gt_img, gt_ann):
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
+        clip_preds_np = clip_preds.cpu().detach().numpy()
         new_mask_cls = pred_clfs
 
         for i, mask in enumerate(masks):
             pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
-            iou, _ = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
-            if pred_is_background and iou > 0.5:
-                new_mask_cls[i, num_classes - 1] = 0
-                new_mask_cls[i, 0:150] = clip_preds[i]
+            iou, best_category = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
+            clip_category = np.argmax(clip_preds_np[i])
+            if pred_is_background and iou > 0.5 and clip_category == best_category:
+                new_mask_cls[i, 0:num_classes - 1] = 0
+                new_mask_cls[i, best_category] = iou
         
         return new_mask_cls
     
@@ -527,8 +530,8 @@ class FCCLIP(nn.Module):
     # oracle 2 uses hungarian matching to predict correct class
     def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices,
                                         gt_img, pred_clfs, cat_overlapping, clip_preds):
-        #pred_clfs_np = pred_clfs.cpu().detach().numpy()
-        #clip_preds_np = clip_preds.cpu().detach().numpy()
+        pred_clfs_np = pred_clfs.cpu().detach().numpy()
+        clip_preds_np = clip_preds.cpu().detach().numpy()
         new_mask_cls = torch.zeros((masks.shape[0], num_classes) , device=self.device)
         segments_info = gt_ann['segments_info']
         preds_idx, targets_idx = indices
@@ -549,22 +552,20 @@ class FCCLIP(nn.Module):
 
             gt_category = segments_info[target_idx]['category_id']
 
-            # THis checks the metrics only for the best masks but I reimplemented it to check for all masks
-            # TODO: Maybe generate these results as well
-            #global MISSCLASSIFICATION_INFO
-            ## This is for metrics gathering
-            #if self.test_cfg.calculate_confusion_matrix and iou > 0.5:
-            #    pred_clf = np.argmax(pred_clfs_np[i])
+            global MISSCLASSIFICATION_INFO_BEST_MASKS
 
-            #    # Check if missclassified
-            #    if pred_clf != gt_category:
-            #        MISSCLASSIFICATION_INFO.add(pred_clf, cat_overlapping, gt_category, num_classes)
-            #    
-            #if self.test_cfg.calculate_void_clip_classifications and iou > 0.5:
-            #    pred_clip = np.argmax(clip_preds_np[i])
-            #    if pred_clf == num_classes - 1:
-            #        MISSCLASSIFICATION_INFO.void_clip_class.append(pred_clip)
-            #        MISSCLASSIFICATION_INFO.void_gt_class.append(gt_category)
+            pred_clf = np.argmax(pred_clfs_np[i])
+            # This is for metrics gathering
+            if self.test_cfg.calculate_confusion_matrix_best and iou > 0.5:
+                # Check if missclassified
+                if pred_clf != gt_category:
+                    MISSCLASSIFICATION_INFO_BEST_MASKS.add(pred_clf, cat_overlapping, gt_category, num_classes)
+                
+            if self.test_cfg.calculate_void_clip_classifications_best and iou > 0.5:
+                pred_clip = np.argmax(clip_preds_np[i])
+                if pred_clf == num_classes - 1:
+                    MISSCLASSIFICATION_INFO_BEST_MASKS.void_clip_class.append(pred_clip)
+                    MISSCLASSIFICATION_INFO_BEST_MASKS.void_gt_class.append(gt_category)
 
 
             # Use IoU as the score for the category so we can use it later 
