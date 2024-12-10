@@ -2,8 +2,8 @@ import json
 import matplotlib.pyplot as plt
 counter = {}
 
-original = json.load(open('tests/found_by_oracle/found-objects-original.json'))
-oracle = json.load(open('tests/found_by_oracle/found-objects-oracle.json'))
+original = json.load(open('fcclip/tests/found_by_oracle/found-objects-original.json'))
+oracle = json.load(open('fcclip/tests/found_by_oracle/found-objects-oracle.json'))
 
 class Stat:
     def __init__(self):
@@ -21,6 +21,8 @@ class Stat:
 
 img_diff_counter = {}
 
+overlap = json.load(open('fcclip/tests/train_overlap_text.json'))
+
 for img_id, obj in original.items():
     if img_id not in oracle:
         raise Exception('Object not found in oracle: %s' % obj)
@@ -30,7 +32,12 @@ for img_id, obj in original.items():
     img_diff_counter[img_id] = abs(len(found_gt_original) - len(found_gt_oracle))
     
     for obj in found_gt_oracle:
-        obj_name = obj[0].split(',')[0]
+        obj_name = obj[0]
+        if obj_name in overlap:
+            obj_name = f'*{obj_name.split(',')[0]}*'
+        else:
+            obj_name = obj_name.split(',')[0]
+
         val = obj[1]
 
         if obj_name not in counter:
@@ -42,21 +49,20 @@ for img_id, obj in original.items():
 
         counter[obj_name].counter += 1
 
-
-
 sorted_items = sorted(counter.items(), key=lambda item: item[1].ratio())
 keys = [ key for key, val in sorted_items if val.ratio() > 0.4] 
 values = [val.ratio() for key, val in sorted_items if val.ratio() > 0.4]
+
 
 
 plt.figure(figsize=(10, 5))
 plt.bar(keys, values)
 plt.xlabel('Category')
 plt.ylabel('Percentage')
-plt.title('What percent of elements in this category were found by oracle compared to fcclip')
+plt.title('What percent of elements in this category were found by oracle compared to fcclip. * means seen')
 plt.xticks(rotation=90)
 plt.tight_layout()
-plt.savefig('tests/found_by_oracle/compare.png')
+plt.savefig('fcclip/tests/found_by_oracle/compare.png')
 
 values = [val.counter for key, val in sorted_items if val.ratio() > 0.4]
 
@@ -64,10 +70,10 @@ plt.figure(figsize=(10, 5))
 plt.bar(keys, values)
 plt.xlabel('Category')
 plt.ylabel('Counts')
-plt.title('How often this category was not found by oracle')
+plt.title('How often this category was not found by oracle. * means seen')
 plt.xticks(rotation=90)
 plt.tight_layout()
-plt.savefig('tests/found_by_oracle/missed.png')
+plt.savefig('fcclip/tests/found_by_oracle/missed.png')
 
 img_diff_counter_sorted = sorted(img_diff_counter.items(), key=lambda item: item[1])
-json.dump(img_diff_counter_sorted, open('tests/found_by_oracle/img_diff_counter.json', 'w'), indent=4)
+json.dump(img_diff_counter_sorted, open('fcclip/tests/found_by_oracle/img_diff_counter.json', 'w'), indent=4)
