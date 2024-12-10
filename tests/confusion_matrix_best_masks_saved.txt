@@ -1,0 +1,5 @@
+Confusion Matrix:
+            | Predicted Void | Predicted Seen | Predicted Unseen
+-----------------------------------------------------------------------
+Seen       |            4304 |            273 |             669
+Unseen     |            3383 |            388 |             179
