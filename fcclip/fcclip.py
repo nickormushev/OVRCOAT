@@ -67,6 +67,37 @@ def get_unique_color(unique_id, prev_colors, min_distance=20):
             break
     return color
 
+def calculate_entropy(probs):
+    return -np.sum(probs * np.log(probs + 1e-6))
+
+from skimage.measure import regionprops, perimeter, label
+def calculate_mask_properties(mask):
+
+    # Calculate region properties
+    binary_mask = (mask.sigmoid() > 0.5)    
+    bin_area = binary_mask.sum().item()
+
+    if bin_area == 0:
+        return 0, 0, 0, bin_area
+
+    binary_mask = binary_mask.cpu().numpy().astype(np.uint8)
+    # labeled_mask = label(binary_mask)  This is not needed since we have only one region in the mask
+    # It assigns unique labels to the different regions in the mask
+    props = regionprops(binary_mask)[0]
+    
+    # Eccentricity
+    eccentricity = props.eccentricity
+    
+    # Compactness (also known as Roundness or Circularity)
+    area = props.area
+    perim = perimeter(binary_mask)
+    compactness = (perim ** 2) / (4 * np.pi * area)
+    
+    # Perimeter-to-Area Ratio
+    perimeter_to_area_ratio = perim / area
+    
+    return eccentricity, compactness, perimeter_to_area_ratio, area
+
 class MissclassificationInfo:
     def __init__(self):
         self.seen_missclassified_as_void_count = 0
@@ -511,7 +542,7 @@ class FCCLIP(nn.Module):
         return iou, best_gt_category
 
     # Oracle 3 Use CLIP on background masks if the category is the same as the gt one
-    def fix_mask_classification_with_clip(self, masks, num_classes, pred_clfs, clip_preds, gt_img, gt_ann, validate=False):
+    def fix_mask_classification_with_clip(self, masks, num_classes, pred_clfs, clip_preds, gt_img, gt_ann, validate=True):
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
         clip_preds_np = clip_preds.cpu().detach().numpy()
         new_mask_cls = pred_clfs
@@ -525,7 +556,7 @@ class FCCLIP(nn.Module):
             validated = (not validate or clip_category == best_category)
             if pred_is_background and iou > 0.5 and validated:
                 new_mask_cls[i, 0:num_classes - 1] = 0
-                new_mask_cls[i, clip_category] = iou
+                new_mask_cls[i, clip_category] = 1
         
         return new_mask_cls
     
@@ -695,19 +726,18 @@ class FCCLIP(nn.Module):
         np_preds_no_void = preds_no_void.cpu().detach().numpy()
 
         df = pd.DataFrame(columns=['gt_category',
-                'pred_category', 'pred_category_prob', 'pred_second_best_category', 'pred_second_best_prob',
-                'preds_no_void_category', 'preds_no_void_category_prob', 'preds_no_void_second_best_category', 'preds_no_void_second_best_prob',
-                'clip_category', 'clip_category_prob', 'clip_second_best_category','clip_second_best_prob',
-                'mask2former_category', 'mask2former_category_prob', 'mask2former_second_best_category', 'mask2former_second_best_prob',
-                'gt_iou', 'void_prob', 'mask_area'])
+                'pred_category_1', 'pred_prob_1', 'pred_category_2', 'pred_prob_2',
+                'pred_no_void_category_1', 'pred_no_void_prob_1', 'pred_no_void_category_2', 'pred_no_void_prob_2',
+                'clip_category_1', 'clip_prob_1', 'clip_category_2','clip_prob_2',
+                'mask2former_category_1', 'mask2former_prob_1', 'mask2former_category_2', 'mask2former_prob_2',
+                'gt_iou', 'void_prob', 'mask_area', 'entropy_pred', 'entropy_clip', 'entropy_mask2former', 'entropy_preds_no_void',
+                'eccentricity', 'compactness', 'perimeter_to_area_ratio'])
 
         for i, mask in enumerate(masks):
             iou, gt_cat = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
 
             if gt_cat is None:
                 gt_cat = VOID_CATEGORY_ID
-
-            mask_area = (mask.sigmoid() > 0.5).sum().item()
 
             pred_cat = np.argmax(np_preds[i])
             pred_cat_prob = np_preds[i, pred_cat]
@@ -731,19 +761,25 @@ class FCCLIP(nn.Module):
             if iou != 0:
                 iou = iou.item()
 
+            eccentricity, compactness, perimeter_to_area_ratio, mask_area = calculate_mask_properties(mask)
+            
             df_temp = pd.DataFrame({'gt_category': gt_cat, 'pred_category_1': pred_cat, 'pred_prob_1': pred_cat_prob,
                             'pred_category_2': pred_cat_second_best, 'pred_prob_2': pred_cat_second_best_prob,
-                            'pred_no_void_category_1': preds_no_void_cat, 'pred_no_void_category_prob_1': preds_no_void_cat_prob,
-                            'pred_no_void__category_2': preds_no_void_cat_second_best, 'pred_no_void_prob_2': preds_no_void_cat_second_best_prob,
-                            'clip_category_1': clip_cat, 'clip_category_prob_1': clip_cat_prob, 'clip_category_2': clip_cat_second_best,
+                            'pred_no_void_category_1': preds_no_void_cat, 'pred_no_void_prob_1': preds_no_void_cat_prob,
+                            'pred_no_void_category_2': preds_no_void_cat_second_best, 'pred_no_void_prob_2': preds_no_void_cat_second_best_prob,
+                            'clip_category_1': clip_cat, 'clip_prob_1': clip_cat_prob, 'clip_category_2': clip_cat_second_best,
                             'clip_prob_2': clip_cat_second_best_prob, 'mask2former_category_1': mask2former_cat,
-                            'mask2former_category_prob_1': mask2former_cat_prob, 'mask2former_category_2': mask2former_cat_second_best,
+                            'mask2former_prob_1': mask2former_cat_prob, 'mask2former_category_2': mask2former_cat_second_best,
                             'mask2former_prob_2': mask2former_cat_second_best_prob,
-                            'gt_iou': iou, 'void_prob': np_void_prob[i].item(), 'mask_area': mask_area}, index=[0])
+                            'gt_iou': iou, 'void_prob': np_void_prob[i].item(), 'mask_area': mask_area,
+                            'entropy_pred': calculate_entropy(np_preds[i]), 'entropy_clip': calculate_entropy(np_clip[i]),
+                            'entropy_mask2former': calculate_entropy(np_mask2former[i]), 'entropy_preds_no_void': calculate_entropy(np_preds_no_void[i]),
+                            'eccentricity': eccentricity, 'compactness': compactness, 'perimeter_to_area_ratio': perimeter_to_area_ratio
+                        }, index=[0])
             
             df = pd.concat([df, df_temp])
         
-        output_path='./tests/void_histogram_data.csv'
+        output_path='./tests/void_histogram_data_3.csv'
         df.to_csv(output_path, mode='a', header=not os.path.exists(output_path))
 
     def forward(self, batched_inputs):
@@ -815,7 +851,6 @@ class FCCLIP(nn.Module):
                                                 mode='bilinear', align_corners=False)
             if "convnext" in self.backbone.model_name.lower():
                 pooled_clip_feature = self.mask_pooling(clip_feature, mask_for_pooling) # Apply pooling with mask and get embedding
-                # Not clear to me if this is the results directly after CLIP or the ones from the pixel decoder
                 pooled_clip_feature = self.backbone.visual_prediction_forward(pooled_clip_feature)
             elif "rn" in self.backbone.model_name.lower():
                 pooled_clip_feature = self.backbone.visual_prediction_forward(clip_feature, mask_for_pooling)
