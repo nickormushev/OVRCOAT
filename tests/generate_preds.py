@@ -53,7 +53,6 @@ class TestConfig:
 
         self.void_histogram_data = False
 
-
         self.evaluate = False
         # highlight_missed requires self.evaluate
         self.highlight_missed = False
@@ -290,7 +289,7 @@ if __name__ == "__main__":
                       if img_file.endswith((".png", ".jpg"))]
         
         for path in tqdm(img_paths):
-            file_exists = os.path.exists(os.path.join(args.output_dir, os.path.basename(path)))
+            file_exists = os.path.exists(os.path.join(args.output_dir, os.path.basename(path).split(".")[0] + ".png"))
             if test_cfg.skip_seen_files and file_exists:
                 continue
             process_image(predictor, path, os.path.basename(path), args.output_dir, pan_annotations, test_cfg)
