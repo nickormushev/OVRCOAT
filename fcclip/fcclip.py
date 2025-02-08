@@ -182,7 +182,7 @@ class FCCLIP(nn.Module):
     Main class for mask classification semantic segmentation architectures.
     """
 
-    @configurable
+    @configurable # calls the configurable wrapper in detectron2.config before init
     def __init__(
         self,
         *,
@@ -354,9 +354,10 @@ class FCCLIP(nn.Module):
             # and the second is the number of templates per class used
             return self.test_text_classifier, self.test_num_templates
 
-    @classmethod
-    def from_config(cls, cfg):
+    @classmethod 
+    def from_config(cls, cfg): # Called by configurable wrapper before init to get arguments which it passes to init
         # This is the frozen CLIP backbone
+        cfg.MODEL.BACKBONE.FREEZE = True
         backbone = build_backbone(cfg)
         sem_seg_head = build_sem_seg_head(cfg, backbone.output_shape())
 

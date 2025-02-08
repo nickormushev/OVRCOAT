@@ -78,8 +78,11 @@ class CLIP(Backbone):
             "clip_embedding": self.dim_latent
         }
 
-        self.eval()
-        self.freeze_everything()
+        if cfg.MODEL.BACKBONE.FREEZE:
+            self.eval()
+            self.freeze_everything()
+        else:
+            self.train()
 
     def freeze_everything(self):
         for param in self.clip_model.parameters():
