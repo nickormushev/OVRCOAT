@@ -10,3 +10,8 @@ tests/preds*
 *missed_objects*
 *examples*
 *box-masks*
+
+datasets/coco/*
+logs/*
+output/*
+fcclip_cocopan.pth

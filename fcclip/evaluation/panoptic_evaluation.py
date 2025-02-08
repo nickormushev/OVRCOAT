@@ -417,8 +417,7 @@ def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
     
     top_n = pq_stat.get_top_n_images_by_criteria(20, "misslabeled")
     for img in top_n:
-        print(f"Image ID: {img[0]}, misslabeled percentage: {
-            pq_stat.obj_recogn_per_img[img[0]].mislabeled_objects_percent}")
+        print(f"Image ID: {img[0]}, misslabeled percentage: {pq_stat.obj_recogn_per_img[img[0]].mislabeled_objects_percent}")
 
     metrics = [("All", None), ("Things", True), ("Stuff", False)]
     results = {}

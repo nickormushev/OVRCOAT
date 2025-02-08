@@ -832,6 +832,7 @@ class FCCLIP(nn.Module):
                 targets = None
 
             # bipartite matching-based loss
+            print("Training")
             losses = self.criterion(outputs, targets)
 
             for k in list(losses.keys()):
@@ -926,8 +927,12 @@ class FCCLIP(nn.Module):
                     mask_cls_result = mask_cls_result.to(mask_pred_result)
 
                 # Use oracle to fix classes based on gt
-                self.test_cfg = input_per_image['test_cfg']
-                if self.test_cfg.use_oracle:
+                if 'test_cfg' in input_per_image:
+                    self.test_cfg = input_per_image['test_cfg']
+                else:
+                    self.test_cfg = None
+
+                if self.test_cfg is not None and self.test_cfg.use_oracle:
                     num_classes = mask_cls_result.shape[1]
                     instances = input_per_image['instances']
                     gt_ann = input_per_image['gt_ann']
@@ -966,7 +971,7 @@ class FCCLIP(nn.Module):
 
 
                 # Skips last part to increase speed of evaluations if we are not saving outputs
-                if not self.test_cfg.save_pan_predictions:
+                if self.test_cfg is not None and not self.test_cfg.save_pan_predictions:
                     return [None]
 
                 # semantic segmentation inference
