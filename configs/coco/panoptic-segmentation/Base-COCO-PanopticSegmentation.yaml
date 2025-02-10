@@ -37,6 +37,7 @@ INPUT:
   IMAGE_SIZE: 1024
   MIN_SCALE: 0.1
   MAX_SCALE: 2.0
+  RANDOM_FLIP: "none"
   FORMAT: "RGB"
   DATASET_MAPPER_NAME: "coco_panoptic_lsj"
 TEST:

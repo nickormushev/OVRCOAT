@@ -215,9 +215,12 @@ class CLIP(Backbone):
             return text_features
 
     def forward(self, x):
-        self.eval()
-        with torch.no_grad():
+        if self.training:
             return self.extract_features(x)
+        else:
+            self.eval()
+            with torch.no_grad():
+                return self.extract_features(x)
     
     @property
     def dim_latent(self):

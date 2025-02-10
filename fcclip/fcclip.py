@@ -357,7 +357,6 @@ class FCCLIP(nn.Module):
     @classmethod 
     def from_config(cls, cfg): # Called by configurable wrapper before init to get arguments which it passes to init
         # This is the frozen CLIP backbone
-        cfg.MODEL.BACKBONE.FREEZE = True
         backbone = build_backbone(cfg)
         sem_seg_head = build_sem_seg_head(cfg, backbone.output_shape())
 
