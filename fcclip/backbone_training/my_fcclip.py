@@ -360,6 +360,7 @@ class MYFCCLIP(nn.Module):
         # This is the frozen CLIP backbone
 
         backbone = build_backbone(cfg)
+        # Try  with cfg.defrost()
         mutable_cfg = CN(cfg.copy())
         mutable_cfg.MODEL.BACKBONE.FREEZE = True
         frozen_backbone = build_backbone(mutable_cfg)
@@ -515,16 +516,13 @@ class MYFCCLIP(nn.Module):
                 gt_masks = targets_per_img["masks"]
                 gt_labels = targets_per_img["labels"]
 
-                num_masks = gt_masks.shape[1]
+                num_masks = gt_masks.shape[0]
                 if num_masks == 0:
                     continue
 
                 out_vocab_cls_results = self.out_of_vocab_classification(gt_masks, clip_feature[i:i+1], text_classifier, num_templates)
                 batch_size, num_masks, num_classes = out_vocab_cls_results.shape
-                #random_probs = torch.rand(batch_size, num_masks, num_classes, device=out_vocab_cls_results.device)
-                #random_probs = random_probs / random_probs.sum(dim=-1, keepdim=True)  # Normalize to sum to 1
 
-                #out_vocab_cls_results = random_probs
                 # Reshape out_vocab_cls_results to [batch_size * num_objects, num_classes]
                 out_vocab_cls_results = out_vocab_cls_results.reshape(batch_size * num_masks, num_classes)
 
