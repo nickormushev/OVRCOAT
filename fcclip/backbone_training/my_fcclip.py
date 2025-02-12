@@ -177,6 +177,17 @@ CATEGORIES_INFO = defaultdict(CategoryInfo)
 MISSCLASSIFICATION_INFO = MissclassificationInfo()
 MISSCLASSIFICATION_INFO_BEST_MASKS = MissclassificationInfo()
 
+def batched_cosine_similarity_loss(A, B):
+    A_normalized = F.normalize(A, p=2, dim=2) 
+    B_normalized = F.normalize(B, p=2, dim=2)
+    
+    cosine_sim = torch.sum(A_normalized * B_normalized, dim=2)  # (B, m)
+    
+    mean_cosine_sim = torch.mean(cosine_sim, dim=1)  # (B,)
+    
+    loss = 1 - torch.mean(mean_cosine_sim)  # Scalar loss
+    return loss
+
 @META_ARCH_REGISTRY.register()
 class MYFCCLIP(nn.Module):
     """
@@ -190,6 +201,7 @@ class MYFCCLIP(nn.Module):
         backbone: Backbone,
         frozen_backbone: Backbone,
         weight_dict: dict,
+        loss: str,
         num_queries: int,
         object_mask_threshold: float,
         overlap_threshold: float,
@@ -237,6 +249,7 @@ class MYFCCLIP(nn.Module):
         self.backbone = backbone
         self.weight_dict = weight_dict
         self.frozen_backbone = frozen_backbone
+        self.loss = loss
         self.num_queries = num_queries
         self.overlap_threshold = overlap_threshold
         self.object_mask_threshold = object_mask_threshold
@@ -367,18 +380,18 @@ class MYFCCLIP(nn.Module):
         cfg.freeze()
 
         # Loss parameters:
-        deep_supervision = cfg.MODEL.MASK_FORMER.DEEP_SUPERVISION
 
         # loss weights
-        l2_weight = cfg.MODEL.FC_CLIP.L2_WEIGHT
+        dist_weight = cfg.MODEL.FC_CLIP.DIST_WEIGHT
         ce_weight = cfg.MODEL.FC_CLIP.CE_WEIGHT
 
         weight_dict = {
-            "l2_loss": l2_weight,
+            "dist_loss": dist_weight,
             "ce_loss": ce_weight,
         }
 
                 
+        deep_supervision = cfg.MODEL.MASK_FORMER.DEEP_SUPERVISION
         #if deep_supervision:
         #    dec_layers = cfg.MODEL.MASK_FORMER.DEC_LAYERS
         #    aux_weight_dict = {}
@@ -386,12 +399,12 @@ class MYFCCLIP(nn.Module):
         #        aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
         #    weight_dict.update(aux_weight_dict)
 
-        losses = ["l2_loss", "ce_loss"]
 
         return {
             "backbone": backbone,
             "weight_dict": weight_dict,
             "frozen_backbone": frozen_backbone,
+            "loss": cfg.MODEL.FC_CLIP.LOSS,
             "num_queries": cfg.MODEL.MASK_FORMER.NUM_OBJECT_QUERIES,
             "object_mask_threshold": cfg.MODEL.MASK_FORMER.TEST.OBJECT_MASK_THRESHOLD,
             "overlap_threshold": cfg.MODEL.MASK_FORMER.TEST.OVERLAP_THRESHOLD,
@@ -509,6 +522,7 @@ class MYFCCLIP(nn.Module):
                 ce_loss += F.cross_entropy(out_vocab_cls_results, gt_labels, reduction='mean')
             
             ce_loss = ce_loss / len(targets)
+
             
             # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
             reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
@@ -521,10 +535,18 @@ class MYFCCLIP(nn.Module):
             gram_matrix_clip_feat = torch.bmm(reshaped_clip_feat, reshaped_clip_feat.transpose(1, 2))
             gram_matrix_frozen_clip_feat = torch.bmm(reshaped_frozen_clip_feat, reshaped_frozen_clip_feat.transpose(1, 2))
 
-            l2_loss = F.mse_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat, reduction='mean')
+
+            test = gram_matrix_clip_feat.sum()
+            test1 = gram_matrix_frozen_clip_feat.sum()
+
+
+            if self.loss == "l2":
+                dist_loss = F.mse_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
+            else:
+                dist_loss = batched_cosine_similarity_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
 
             losses = {
-                "l2_loss": l2_loss * self.weight_dict["l2_loss"],
+                "dist_loss": dist_loss * self.weight_dict["dist_loss"],
                 "ce_loss": ce_loss * self.weight_dict["ce_loss"],
             }
             # bipartite matching-based loss
@@ -665,7 +687,7 @@ class MYFCCLIP(nn.Module):
         image_size = mask_pred.shape[-2:]
 
         # [Q, K]
-        scores = mask_cls
+        scores = mask_cls.to(self.device)
         # if this is panoptic segmentation
         if self.panoptic_on:
             num_classes = len(self.test_metadata.stuff_classes)
@@ -674,15 +696,17 @@ class MYFCCLIP(nn.Module):
         labels = torch.arange(num_classes, device=self.device).unsqueeze(0).repeat(mask_pred.shape[0], 1).flatten(0, 1)
         # scores_per_image, topk_indices = scores.flatten(0, 1).topk(self.num_queries, sorted=False)
         scores_per_image, topk_indices = scores.flatten(0, 1).topk(self.test_topk_per_image, sorted=False)
+        topk_indices.to(self.device)
+        scores_per_image.to(self.device)
         labels_per_image = labels[topk_indices]
 
         topk_indices = topk_indices // num_classes
         # mask_pred = mask_pred.unsqueeze(1).repeat(1, self.sem_seg_head.num_classes, 1).flatten(0, 1)
-        mask_pred = mask_pred[topk_indices]
+        mask_pred = mask_pred[topk_indices].to(self.device)
 
         # if this is panoptic segmentation, we only keep the "thing" classes
         if self.panoptic_on:
-            keep = torch.zeros_like(labels_per_image).bool()
+            keep = torch.zeros_like(labels_per_image).bool().to(self.device)
             for i, lab in enumerate(labels_per_image):
                 keep[i] = lab in self.test_metadata.thing_dataset_id_to_contiguous_id.values()
 

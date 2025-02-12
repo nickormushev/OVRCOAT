@@ -832,7 +832,6 @@ class FCCLIP(nn.Module):
                 targets = None
 
             # bipartite matching-based loss
-            print("Training")
             losses = self.criterion(outputs, targets)
 
             for k in list(losses.keys()):
