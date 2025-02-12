@@ -189,7 +189,7 @@ class MYFCCLIP(nn.Module):
         *,
         backbone: Backbone,
         frozen_backbone: Backbone,
-        criterion: nn.Module,
+        weight_dict: dict,
         num_queries: int,
         object_mask_threshold: float,
         overlap_threshold: float,
@@ -235,8 +235,8 @@ class MYFCCLIP(nn.Module):
         """
         super().__init__()
         self.backbone = backbone
+        self.weight_dict = weight_dict
         self.frozen_backbone = frozen_backbone
-        self.criterion = criterion
         self.num_queries = num_queries
         self.overlap_threshold = overlap_threshold
         self.object_mask_threshold = object_mask_threshold
@@ -360,60 +360,38 @@ class MYFCCLIP(nn.Module):
         # This is the frozen CLIP backbone
 
         backbone = build_backbone(cfg)
-        # Try  with cfg.defrost()
-        mutable_cfg = CN(cfg.copy())
-        mutable_cfg.MODEL.BACKBONE.FREEZE = True
-        frozen_backbone = build_backbone(mutable_cfg)
-
-        sem_seg_head = build_sem_seg_head(cfg, backbone.output_shape())
+        cfg.defrost()
+        cfg.MODEL.BACKBONE.FREEZE = True
+        frozen_backbone = build_backbone(cfg)
+        cfg.MODEL.BACKBONE.FREEZE = False
+        cfg.freeze()
 
         # Loss parameters:
         deep_supervision = cfg.MODEL.MASK_FORMER.DEEP_SUPERVISION
-        no_object_weight = cfg.MODEL.MASK_FORMER.NO_OBJECT_WEIGHT
 
         # loss weights
-        class_weight = cfg.MODEL.MASK_FORMER.CLASS_WEIGHT
-        dice_weight = cfg.MODEL.MASK_FORMER.DICE_WEIGHT
-        mask_weight = cfg.MODEL.MASK_FORMER.MASK_WEIGHT
+        l2_weight = cfg.MODEL.FC_CLIP.L2_WEIGHT
+        ce_weight = cfg.MODEL.FC_CLIP.CE_WEIGHT
 
-        # building criterion
-        matcher = HungarianMatcher(
-            cost_class=class_weight,
-            cost_mask=mask_weight,
-            cost_dice=dice_weight,
-            num_points=cfg.MODEL.MASK_FORMER.TRAIN_NUM_POINTS,
-        )
-
-        weight_dict = {"loss_ce": class_weight, "loss_mask": mask_weight, "loss_dice": dice_weight,
-                       "l2_loss": mask_weight,
-                       "ce_loss": class_weight
-                       }
+        weight_dict = {
+            "l2_loss": l2_weight,
+            "ce_loss": ce_weight,
+        }
 
                 
-        if deep_supervision:
-            dec_layers = cfg.MODEL.MASK_FORMER.DEC_LAYERS
-            aux_weight_dict = {}
-            for i in range(dec_layers - 1):
-                aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
-            weight_dict.update(aux_weight_dict)
+        #if deep_supervision:
+        #    dec_layers = cfg.MODEL.MASK_FORMER.DEC_LAYERS
+        #    aux_weight_dict = {}
+        #    for i in range(dec_layers - 1):
+        #        aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
+        #    weight_dict.update(aux_weight_dict)
 
-        losses = ["labels", "masks"]
-
-        criterion = SetCriterion(
-            sem_seg_head.num_classes,
-            matcher=matcher,
-            weight_dict=weight_dict,
-            eos_coef=no_object_weight,
-            losses=losses,
-            num_points=cfg.MODEL.MASK_FORMER.TRAIN_NUM_POINTS,
-            oversample_ratio=cfg.MODEL.MASK_FORMER.OVERSAMPLE_RATIO,
-            importance_sample_ratio=cfg.MODEL.MASK_FORMER.IMPORTANCE_SAMPLE_RATIO,
-        )
+        losses = ["l2_loss", "ce_loss"]
 
         return {
             "backbone": backbone,
+            "weight_dict": weight_dict,
             "frozen_backbone": frozen_backbone,
-            "criterion": criterion,
             "num_queries": cfg.MODEL.MASK_FORMER.NUM_OBJECT_QUERIES,
             "object_mask_threshold": cfg.MODEL.MASK_FORMER.TEST.OBJECT_MASK_THRESHOLD,
             "overlap_threshold": cfg.MODEL.MASK_FORMER.TEST.OVERLAP_THRESHOLD,
@@ -546,8 +524,8 @@ class MYFCCLIP(nn.Module):
             l2_loss = F.mse_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat, reduction='mean')
 
             losses = {
-                "l2_loss": l2_loss,
-                "ce_loss": ce_loss
+                "l2_loss": l2_loss * self.weight_dict["l2_loss"],
+                "ce_loss": ce_loss * self.weight_dict["ce_loss"],
             }
             # bipartite matching-based loss
             #losses = self.criterion(outputs, targets)
