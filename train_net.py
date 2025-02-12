@@ -1,3 +1,6 @@
+import wandb
+import yaml
+
 """
 This file may have been modified by Bytedance Ltd. and/or its affiliates (“Bytedance's Modifications”).
 All Bytedance's Modifications are Copyright (year) Bytedance Ltd. and/or its affiliates. 
@@ -40,7 +43,6 @@ from detectron2.evaluation import (
     CityscapesInstanceEvaluator,
     CityscapesSemSegEvaluator,
     COCOEvaluator,
-    COCOPanopticEvaluator,
     DatasetEvaluators,
     LVISEvaluator,
     SemSegEvaluator,
@@ -53,6 +55,7 @@ from detectron2.utils.logger import setup_logger
 from fcclip import (
     COCOInstanceNewBaselineDatasetMapper,
     COCOPanopticNewBaselineDatasetMapper,
+    COCOPanopticWandbEvaluator,
     InstanceSegEvaluator,
     MaskFormerInstanceDatasetMapper,
     MaskFormerPanopticDatasetMapper,
@@ -101,7 +104,7 @@ class Trainer(DefaultTrainer):
             "mapillary_vistas_panoptic_seg",
         ]:
             if cfg.MODEL.MASK_FORMER.TEST.PANOPTIC_ON:
-                evaluator_list.append(COCOPanopticEvaluator(dataset_name, output_folder))
+                evaluator_list.append(COCOPanopticWandbEvaluator(dataset_name, output_folder))
         # COCO
         if evaluator_type == "coco_panoptic_seg" and cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON:
             evaluator_list.append(COCOEvaluator(dataset_name, output_dir=output_folder))
@@ -320,6 +323,14 @@ def setup(args):
 
 def main(args):
     cfg = setup(args)
+
+    dump = cfg.dump()
+    cfg_dict  = yaml.safe_load(dump)
+
+    wandb.init(
+        project="segmentation-clip",
+        config=cfg_dict
+    )
 
     if args.eval_only:
         model = Trainer.build_model(cfg)

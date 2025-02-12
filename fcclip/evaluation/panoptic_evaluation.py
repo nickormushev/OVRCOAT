@@ -11,6 +11,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 from __future__ import unicode_literals
+import wandb
 import os, sys
 import numpy as np
 import json
@@ -20,6 +21,8 @@ from collections import defaultdict
 import argparse
 import multiprocessing
 from detectron2.utils.visualizer import ColorMode, Visualizer, random_color
+
+from detectron2.evaluation import COCOPanopticEvaluator
 
 new_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 os.chdir(new_root_dir)
@@ -33,6 +36,13 @@ CHECK_CLASSIFICATION = True
 # If set to False we ignore VOID class if missclassified for the true postive calculations for PQ
 CHECK_BACKGROUND = True
 
+
+class COCOPanopticWandbEvaluator(COCOPanopticEvaluator):
+
+    def evaluate(self):
+        res = super().evaluate()
+        wandb.log(res['panoptic_seg'])
+        return res
 
 # TODO: Validate calculations of missed objects again!
 from panopticapi.utils import get_traceback, rgb2id

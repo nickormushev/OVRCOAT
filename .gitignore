@@ -15,3 +15,4 @@ datasets/coco/*
 logs/*
 output/*
 fcclip_cocopan.pth
+wandb/*

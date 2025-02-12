@@ -1,3 +1,4 @@
+import wandb
 """
 This file may have been modified by Bytedance Ltd. and/or its affiliates (“Bytedance's Modifications”).
 All Bytedance's Modifications are Copyright (year) Bytedance Ltd. and/or its affiliates. 
@@ -386,19 +387,9 @@ class MYFCCLIP(nn.Module):
         ce_weight = cfg.MODEL.FC_CLIP.CE_WEIGHT
 
         weight_dict = {
-            "dist_loss": dist_weight,
             "ce_loss": ce_weight,
+            "dist_loss": dist_weight,
         }
-
-                
-        deep_supervision = cfg.MODEL.MASK_FORMER.DEEP_SUPERVISION
-        #if deep_supervision:
-        #    dec_layers = cfg.MODEL.MASK_FORMER.DEC_LAYERS
-        #    aux_weight_dict = {}
-        #    for i in range(dec_layers - 1):
-        #        aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
-        #    weight_dict.update(aux_weight_dict)
-
 
         return {
             "backbone": backbone,
@@ -523,7 +514,6 @@ class MYFCCLIP(nn.Module):
             
             ce_loss = ce_loss / len(targets)
 
-            
             # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
             reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
             reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0], frozen_clip_feature.shape[1], -1)
@@ -535,29 +525,17 @@ class MYFCCLIP(nn.Module):
             gram_matrix_clip_feat = torch.bmm(reshaped_clip_feat, reshaped_clip_feat.transpose(1, 2))
             gram_matrix_frozen_clip_feat = torch.bmm(reshaped_frozen_clip_feat, reshaped_frozen_clip_feat.transpose(1, 2))
 
-
-            test = gram_matrix_clip_feat.sum()
-            test1 = gram_matrix_frozen_clip_feat.sum()
-
-
             if self.loss == "l2":
                 dist_loss = F.mse_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
             else:
                 dist_loss = batched_cosine_similarity_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
 
             losses = {
-                "dist_loss": dist_loss * self.weight_dict["dist_loss"],
                 "ce_loss": ce_loss * self.weight_dict["ce_loss"],
+                "dist_loss": dist_loss * self.weight_dict["dist_loss"],
             }
-            # bipartite matching-based loss
-            #losses = self.criterion(outputs, targets)
 
-            #for k in list(losses.keys()):
-            #    if k in self.criterion.weight_dict:
-            #        losses[k] *= self.criterion.weight_dict[k]
-            #    else:
-            #        # remove this loss if not specified in `weight_dict`
-            #        losses.pop(k)
+            wandb.log(losses)
 
             return losses
         else:
