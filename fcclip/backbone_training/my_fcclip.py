@@ -202,6 +202,7 @@ class MYFCCLIP(nn.Module):
         backbone: Backbone,
         frozen_backbone: Backbone,
         weight_dict: dict,
+        embedding_reduction: nn.Module,
         loss: str,
         pooling_weights: nn.Parameter,
         use_pooling_weights: bool,
@@ -287,6 +288,7 @@ class MYFCCLIP(nn.Module):
         self.void_embedding = nn.Embedding(1, backbone.dim_latent) # use this for void
 
         self.use_pooling_weights = use_pooling_weights
+        self.embedding_reduction = embedding_reduction
 
         _, self.train_num_templates, self.train_class_names = self.prepare_class_names_from_metadata(train_metadata, train_metadata)
         self.category_overlapping_mask, self.test_num_templates, self.test_class_names = self.prepare_class_names_from_metadata(test_metadata, train_metadata)
@@ -399,9 +401,13 @@ class MYFCCLIP(nn.Module):
         else:
             pool_weights = None
 
+        reduce_to = 256  
+        embedding_reduction = nn.Conv2d(2048, reduce_to, kernel_size=1, stride=1, padding=0)
+
         return {
             "backbone": backbone,
             "weight_dict": weight_dict,
+            "embedding_reduction": embedding_reduction,
             "frozen_backbone": frozen_backbone,
             "loss": cfg.MODEL.FC_CLIP.LOSS,
             "use_pooling_weights": cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS,
@@ -527,12 +533,16 @@ class MYFCCLIP(nn.Module):
             
             ce_loss = ce_loss / len(targets)
 
-            # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
-            reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
-            reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0], frozen_clip_feature.shape[1], -1)
+            reduced_frozen_clip_features = self.embedding_reduction(frozen_clip_feature)
+            reduced_clip_features = self.embedding_reduction(clip_feature)
 
-            reshaped_clip_feat = F.normalize(reshaped_clip_feat, dim=-1)
-            reshaped_frozen_clip_feat = F.normalize(reshaped_frozen_clip_feat, dim=-1)
+            # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
+            reshaped_clip_feat = reduced_clip_features.view(reduced_clip_features.shape[0], reduced_clip_features.shape[1], -1)
+            reshaped_frozen_clip_feat = reduced_frozen_clip_features.view(reduced_frozen_clip_features.shape[0],
+                                                                reduced_frozen_clip_features.shape[1], -1)
+
+            #reshaped_clip_feat = F.normalize(reshaped_clip_feat, dim=-1)
+            #reshaped_frozen_clip_feat = F.normalize(reshaped_frozen_clip_feat, dim=-1)
 
             # Calculate the Gram matrices using batch matrix multiplication
             gram_matrix_clip_feat = torch.bmm(reshaped_clip_feat, reshaped_clip_feat.transpose(1, 2))
