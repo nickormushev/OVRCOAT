@@ -131,3 +131,4 @@ def add_fcclip_config(cfg):
     cfg.MODEL.FC_CLIP.DIST_WEIGHT = 3
     cfg.MODEL.FC_CLIP.CE_WEIGHT = 2
     cfg.MODEL.FC_CLIP.LOSS = "l2"
+    cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS = False

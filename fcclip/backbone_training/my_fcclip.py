@@ -203,6 +203,8 @@ class MYFCCLIP(nn.Module):
         frozen_backbone: Backbone,
         weight_dict: dict,
         loss: str,
+        pooling_weights: nn.Parameter,
+        use_pooling_weights: bool,
         num_queries: int,
         object_mask_threshold: float,
         overlap_threshold: float,
@@ -251,6 +253,7 @@ class MYFCCLIP(nn.Module):
         self.weight_dict = weight_dict
         self.frozen_backbone = frozen_backbone
         self.loss = loss
+        self.pooling_weights = pooling_weights
         self.num_queries = num_queries
         self.overlap_threshold = overlap_threshold
         self.object_mask_threshold = object_mask_threshold
@@ -282,6 +285,8 @@ class MYFCCLIP(nn.Module):
         self.train_text_classifier = None
         self.test_text_classifier = None
         self.void_embedding = nn.Embedding(1, backbone.dim_latent) # use this for void
+
+        self.use_pooling_weights = use_pooling_weights
 
         _, self.train_num_templates, self.train_class_names = self.prepare_class_names_from_metadata(train_metadata, train_metadata)
         self.category_overlapping_mask, self.test_num_templates, self.test_class_names = self.prepare_class_names_from_metadata(test_metadata, train_metadata)
@@ -380,9 +385,6 @@ class MYFCCLIP(nn.Module):
         cfg.MODEL.BACKBONE.FREEZE = False
         cfg.freeze()
 
-        # Loss parameters:
-
-        # loss weights
         dist_weight = cfg.MODEL.FC_CLIP.DIST_WEIGHT
         ce_weight = cfg.MODEL.FC_CLIP.CE_WEIGHT
 
@@ -391,11 +393,19 @@ class MYFCCLIP(nn.Module):
             "dist_loss": dist_weight,
         }
 
+        if cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS:
+            # Initialize better
+            pool_weights = nn.Parameter(torch.ones((backbone.dim_latent, backbone.dim_latent)) *  0.1)
+        else:
+            pool_weights = None
+
         return {
             "backbone": backbone,
             "weight_dict": weight_dict,
             "frozen_backbone": frozen_backbone,
             "loss": cfg.MODEL.FC_CLIP.LOSS,
+            "use_pooling_weights": cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS,
+            "pooling_weights": pool_weights,
             "num_queries": cfg.MODEL.MASK_FORMER.NUM_OBJECT_QUERIES,
             "object_mask_threshold": cfg.MODEL.MASK_FORMER.TEST.OBJECT_MASK_THRESHOLD,
             "overlap_threshold": cfg.MODEL.MASK_FORMER.TEST.OVERLAP_THRESHOLD,
@@ -434,6 +444,9 @@ class MYFCCLIP(nn.Module):
             pooled_clip_feature = self.backbone.visual_prediction_forward(clip_features, mask_for_pooling)
         else:
             raise NotImplementedError
+
+        if self.use_pooling_weights:
+            pooled_clip_feature = torch.bmm(pooled_clip_feature, self.pooling_weights.unsqueeze(0).expand(pooled_clip_feature.shape[0], -1, -1))
 
         out_vocab_cls_results = get_classification_logits(pooled_clip_feature, text_classifier,
                                                         self.backbone.clip_model.logit_scale, num_templates)
@@ -540,7 +553,6 @@ class MYFCCLIP(nn.Module):
             return losses
         else:
             # We ensemble the pred logits of in-vocab and out-vocab
-            clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
             mask_pred_results = targets[0]['masks']
             
             out_vocab_cls_probs = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)

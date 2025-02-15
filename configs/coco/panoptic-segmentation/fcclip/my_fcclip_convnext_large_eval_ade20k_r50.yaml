@@ -10,6 +10,7 @@ MODEL:
     CLIP_PRETRAINED_WEIGHTS: "openai"
     EMBED_DIM: 1024
     ENSEMBLE_ON_VALID_MASK: True
+    USE_POOLING_WEIGHTS: False
     DIST_WEIGHT: 1
     CE_WEIGHT: 1
-    LOSS: "cos"
+    LOSS: "l2"
