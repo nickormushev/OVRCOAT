@@ -16,3 +16,4 @@ logs/*
 output/*
 fcclip_cocopan.pth
 wandb/*
+LR*
