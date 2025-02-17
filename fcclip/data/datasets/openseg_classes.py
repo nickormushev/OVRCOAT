@@ -2339,8 +2339,16 @@ COCO_STUFF_CATEGORIES = [
     {"id": 182, "name": "wood", "supercategory": "solid"},
 ]
 
+import os
+import sys
+
+new_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+os.chdir(new_root_dir)
+sys.path.append(new_root_dir)
 
 def get_coco_categories_with_prompt_eng():
+    pwd = os.getcwd()
+    print(pwd)
     COCO_CATEGORIES_ = copy.deepcopy(COCO_CATEGORIES)
     coco_id_names = open('./fcclip/data/datasets/coco_panoptic_with_prompt_eng.txt').read().splitlines()
     coco_idx = 0

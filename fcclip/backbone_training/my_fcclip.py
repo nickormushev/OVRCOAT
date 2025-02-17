@@ -23,11 +23,12 @@ from collections import defaultdict
 from panopticapi.utils import rgb2id
 from detectron2.config import configurable
 from detectron2.data import MetadataCatalog
-from detectron2.modeling import META_ARCH_REGISTRY, build_backbone, build_sem_seg_head
+from detectron2.modeling import META_ARCH_REGISTRY, build_backbone, build_sem_seg_head, build_model
 from detectron2.modeling.backbone import Backbone
 from detectron2.modeling.postprocessing import sem_seg_postprocess
 from detectron2.structures import Boxes, ImageList, Instances, BitMasks
 from detectron2.utils.memory import retry_if_cuda_oom
+from detectron2.checkpoint import DetectionCheckpointer
 
 from fcclip.modeling.criterion import SetCriterion
 from matplotlib import cm
@@ -201,6 +202,7 @@ class MYFCCLIP(nn.Module):
         *,
         backbone: Backbone,
         frozen_backbone: Backbone,
+        sem_seg_head: nn.Module,
         weight_dict: dict,
         embedding_reduction: nn.Module,
         loss: str,
@@ -253,6 +255,7 @@ class MYFCCLIP(nn.Module):
         self.backbone = backbone
         self.weight_dict = weight_dict
         self.frozen_backbone = frozen_backbone
+        self.sem_seg_head = sem_seg_head
         self.loss = loss
         self.pooling_weights = pooling_weights
         self.num_queries = num_queries
@@ -376,6 +379,24 @@ class MYFCCLIP(nn.Module):
             # and the second is the number of templates per class used
             return self.test_text_classifier, self.test_num_templates
 
+    @classmethod
+    def get_sem_seg_head(cls, cfg):
+        cfg.MODEL.WEIGHTS = "/home/nikolay/Downloads/fcclip_cocopan.pth"
+        cfg.MODEL.META_ARCHITECTURE = "FCCLIP"
+        model = build_model(cfg)
+        checkpointer = DetectionCheckpointer(model)
+        checkpointer.load(cfg.MODEL.WEIGHTS)
+        sem_seg_head = model.sem_seg_head
+
+        # Freeze all parameters of sem_seg_head
+        for param in sem_seg_head.parameters():
+            param.requires_grad = False
+
+        del model
+        cfg.MODEL.WEIGHTS = ""
+        cfg.MODEL.META_ARCHITECTURE = "MYFCCLIP"
+
+        return sem_seg_head
     @classmethod 
     def from_config(cls, cfg): # Called by configurable wrapper before init to get arguments which it passes to init
         # This is the frozen CLIP backbone
@@ -385,6 +406,7 @@ class MYFCCLIP(nn.Module):
         cfg.MODEL.BACKBONE.FREEZE = True
         frozen_backbone = build_backbone(cfg)
         cfg.MODEL.BACKBONE.FREEZE = False
+        sem_seg_head = MYFCCLIP.get_sem_seg_head(cfg)
         cfg.freeze()
 
         dist_weight = cfg.MODEL.FC_CLIP.DIST_WEIGHT
@@ -402,13 +424,14 @@ class MYFCCLIP(nn.Module):
             pool_weights = None
 
         reduce_to = 256  
-        embedding_reduction = nn.Conv2d(2048, reduce_to, kernel_size=1, stride=1, padding=0)
+        embedding_reduction = None #nn.Conv2d(2048, reduce_to, kernel_size=1, stride=1, padding=0)
 
         return {
             "backbone": backbone,
             "weight_dict": weight_dict,
             "embedding_reduction": embedding_reduction,
             "frozen_backbone": frozen_backbone,
+            "sem_seg_head": sem_seg_head,
             "loss": cfg.MODEL.FC_CLIP.LOSS,
             "use_pooling_weights": cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS,
             "pooling_weights": pool_weights,
@@ -440,7 +463,6 @@ class MYFCCLIP(nn.Module):
         return self.pixel_mean.device
 
     def out_of_vocab_classification(self, masks, clip_features, text_classifier, num_templates):
-        masks = masks.unsqueeze(0).float()
         mask_for_pooling = F.interpolate(masks, size=clip_features.shape[-2:], mode='bilinear', align_corners=False)
 
         if "convnext" in self.backbone.model_name.lower():
@@ -494,6 +516,7 @@ class MYFCCLIP(nn.Module):
 
         features = self.backbone(images.tensor)
         frozen_features = self.frozen_backbone(images.tensor)
+        features = frozen_features
         text_classifier, num_templates = self.get_text_classifier()
 
         params = []
@@ -520,7 +543,8 @@ class MYFCCLIP(nn.Module):
                 num_masks = gt_masks.shape[0]
                 if num_masks == 0:
                     continue
-
+                
+                gt_masks = gt_masks.unsqueeze(0).float()
                 out_vocab_cls_results = self.out_of_vocab_classification(gt_masks, clip_feature[i:i+1], text_classifier, num_templates)
                 batch_size, num_masks, num_classes = out_vocab_cls_results.shape
 
@@ -533,13 +557,13 @@ class MYFCCLIP(nn.Module):
             
             ce_loss = ce_loss / len(targets)
 
-            reduced_frozen_clip_features = self.embedding_reduction(frozen_clip_feature)
-            reduced_clip_features = self.embedding_reduction(clip_feature)
+            #reduced_frozen_clip_features = self.embedding_reduction(frozen_clip_feature)
+            #reduced_clip_features = self.embedding_reduction(clip_feature)
 
             # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
-            reshaped_clip_feat = reduced_clip_features.view(reduced_clip_features.shape[0], reduced_clip_features.shape[1], -1)
-            reshaped_frozen_clip_feat = reduced_frozen_clip_features.view(reduced_frozen_clip_features.shape[0],
-                                                                reduced_frozen_clip_features.shape[1], -1)
+            reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
+            reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0],
+                                                                frozen_clip_feature.shape[1], -1)
 
             #reshaped_clip_feat = F.normalize(reshaped_clip_feat, dim=-1)
             #reshaped_frozen_clip_feat = F.normalize(reshaped_frozen_clip_feat, dim=-1)
@@ -562,15 +586,25 @@ class MYFCCLIP(nn.Module):
 
             return losses
         else:
-            # We ensemble the pred logits of in-vocab and out-vocab
-            mask_pred_results = targets[0]['masks']
+            # TODO: Add to config or smth
+            perfect_masks = False
+            if perfect_masks == True:
+                # We ensemble the pred logits of in-vocab and out-vocab
+                mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
-            out_vocab_cls_probs = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
+                out_vocab_cls_probs = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
 
-            mask_pred_results = mask_pred_results.unsqueeze(0).float().to(self.device)
-            mask_cls_results = out_vocab_cls_probs
+                mask_pred_results = mask_pred_results.unsqueeze(0).float().to(self.device)
+                mask_cls_results = out_vocab_cls_probs
 
-            num_classes = out_vocab_cls_probs.shape[-1]
+            else:
+                frozen_features['text_classifier'] = text_classifier
+                frozen_features['num_templates'] = num_templates
+                mask_2_former_outputs = self.sem_seg_head(frozen_features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
+
+                mask_pred_results = mask_2_former_outputs["pred_masks"]
+                mask_cls_results = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
+            
 
             processed_results = []
             for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(

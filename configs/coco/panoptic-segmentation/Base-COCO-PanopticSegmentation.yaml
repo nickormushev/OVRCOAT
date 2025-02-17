@@ -11,7 +11,7 @@ MODEL:
     STEM_OUT_CHANNELS: 64
     STRIDE_IN_1X1: False
     OUT_FEATURES: ["res2", "res3", "res4", "res5"]
-    # NORM: "SyncBN"
+    #NORM: "SyncBN"
     RES5_MULTI_GRID: [1, 1, 1]  # not used
 DATASETS:
   TRAIN: ("coco_2017_train_panoptic",)
@@ -32,7 +32,7 @@ SOLVER:
     CLIP_VALUE: 0.01
     NORM_TYPE: 2.0
   AMP:
-    ENABLED: False
+    ENABLED: True
 INPUT:
   IMAGE_SIZE: 1024
   MIN_SCALE: 0.1
@@ -41,8 +41,8 @@ INPUT:
   FORMAT: "RGB"
   DATASET_MAPPER_NAME: "coco_panoptic_lsj"
 TEST:
-  EVAL_PERIOD: 5000
+  EVAL_PERIOD: 1000
 DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: True
-  NUM_WORKERS: 8
+  NUM_WORKERS: 2
 VERSION: 2
