@@ -1,0 +1,38 @@
+_BASE_: ./fcclip_convnext_large_eval_ade20k.yaml
+MODEL:
+  META_ARCHITECTURE: "MYFCCLIP"
+  # backbone part.
+  BACKBONE:
+    NAME: "CLIP"
+    FREEZE: False
+  FC_CLIP:
+    CLIP_MODEL_NAME: "RN50"
+    CLIP_PRETRAINED_WEIGHTS: "openai"
+    EMBED_DIM: 1024
+    ENSEMBLE_ON_VALID_MASK: True
+    USE_POOLING_WEIGHTS: False
+    DIST_WEIGHT: 1
+    CE_WEIGHT: 50
+    LOSS: "l2"
+SOLVER:
+  IMS_PER_BATCH: 16
+  BASE_LR: 0.0001
+  STEPS: (10000, 15000)
+  MAX_ITER: 20000
+  WARMUP_FACTOR: 1.0
+  WARMUP_ITERS: 10
+  WEIGHT_DECAY: 0.05
+  OPTIMIZER: "ADAMW"
+  BACKBONE_MULTIPLIER: 0.1
+  CHECKPOINT_PERIOD: 4000
+  CLIP_GRADIENTS:
+    ENABLED: True
+    CLIP_TYPE: "full_model"
+    CLIP_VALUE: 0.01
+    NORM_TYPE: 2.0
+  AMP:
+    ENABLED: False
+TEST:
+  EVAL_PERIOD: 4000
+DATASETS:
+  TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)
