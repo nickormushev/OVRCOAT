@@ -178,6 +178,7 @@ class CategoryInfo:
 CATEGORIES_INFO = defaultdict(CategoryInfo)
 MISSCLASSIFICATION_INFO = MissclassificationInfo()
 MISSCLASSIFICATION_INFO_BEST_MASKS = MissclassificationInfo()
+PERFECT_MASKS = False
 
 def batched_cosine_similarity_loss(A, B):
     A_normalized = F.normalize(A, p=2, dim=2) 
@@ -381,7 +382,7 @@ class MYFCCLIP(nn.Module):
 
     @classmethod
     def get_sem_seg_head(cls, cfg):
-        cfg.MODEL.WEIGHTS = "/home/nikolay/Downloads/fcclip_cocopan.pth"
+        cfg.MODEL.WEIGHTS = "/home/nikolay/Downloads/fcclip_cocopan_r50.pth"
         cfg.MODEL.META_ARCHITECTURE = "FCCLIP"
         model = build_model(cfg)
         checkpointer = DetectionCheckpointer(model)
@@ -516,7 +517,6 @@ class MYFCCLIP(nn.Module):
 
         features = self.backbone(images.tensor)
         frozen_features = self.frozen_backbone(images.tensor)
-        features = frozen_features
         text_classifier, num_templates = self.get_text_classifier()
 
         params = []
@@ -587,8 +587,7 @@ class MYFCCLIP(nn.Module):
             return losses
         else:
             # TODO: Add to config or smth
-            perfect_masks = False
-            if perfect_masks == True:
+            if PERFECT_MASKS == True:
                 # We ensemble the pred logits of in-vocab and out-vocab
                 mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
@@ -657,15 +656,20 @@ class MYFCCLIP(nn.Module):
         return new_targets
 
     def semantic_inference(self, mask_cls, mask_pred):
-        #mask_cls = F.softmax(mask_cls, dim=-1)
-        #mask_pred = mask_pred.sigmoid()
+        if not PERFECT_MASKS:
+            #mask_cls = F.softmax(mask_cls, dim=-1)
+            mask_pred = mask_pred.sigmoid()
+
         semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
         return semseg
 
     def panoptic_inference(self, mask_cls, mask_pred):
-        scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
+        if not PERFECT_MASKS:
+            mask_cls = mask_cls.max(-1)
+            mask_pred = mask_pred.sigmoid()
+        else: 
+            scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
 
-        #mask_pred = mask_pred.sigmoid()
         num_classes = len(self.test_metadata.stuff_classes)
         keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think
         cur_scores = scores[keep]
@@ -681,46 +685,53 @@ class MYFCCLIP(nn.Module):
 
         current_segment_id = 0
 
-        # take argmax
-        cur_mask_ids = cur_prob_masks.argmax(0) # Gets the max score for the pixel. Actually the max index. Uses argmax
-        stuff_memory_list = {}
-        for k in range(cur_classes.shape[0]):
-            pred_class = cur_classes[k].item()
-            isthing = pred_class in self.test_metadata.thing_dataset_id_to_contiguous_id.values()
-            mask_area = (cur_mask_ids == k).sum().item()
-            original_area = (cur_masks[k] >= 0.5).sum().item()
-            mask = (cur_mask_ids == k) & (cur_masks[k] >= 0.5) # Takes pixels of mask but only ones we are sure of 
+        if cur_masks.shape[0] == 0:
+            # We didn't detect any mask :(
+            return panoptic_seg, segments_info
+        else:
+            # take argmax
+            cur_mask_ids = cur_prob_masks.argmax(0) # Gets the max score for the pixel. Actually the max index. Uses argmax
+            stuff_memory_list = {}
+            for k in range(cur_classes.shape[0]):
+                pred_class = cur_classes[k].item()
+                isthing = pred_class in self.test_metadata.thing_dataset_id_to_contiguous_id.values()
+                mask_area = (cur_mask_ids == k).sum().item()
+                original_area = (cur_masks[k] >= 0.5).sum().item()
+                mask = (cur_mask_ids == k) & (cur_masks[k] >= 0.5) # Takes pixels of mask but only ones we are sure of 
 
-            if mask_area > 0 and original_area > 0 and mask.sum().item() > 0:
-                if mask_area / original_area < self.overlap_threshold: # The mask is covered by another
-                    continue
-
-                # merge stuff regions
-                if not isthing:
-                    if int(pred_class) in stuff_memory_list.keys():
-                        panoptic_seg[mask] = stuff_memory_list[int(pred_class)]
+                if mask_area > 0 and original_area > 0 and mask.sum().item() > 0:
+                    if mask_area / original_area < self.overlap_threshold: # The mask is covered by another
                         continue
-                    else:
-                        stuff_memory_list[int(pred_class)] = current_segment_id + 1
 
-                current_segment_id += 1
-                panoptic_seg[mask] = current_segment_id
+                    # merge stuff regions
+                    if not isthing:
+                        if int(pred_class) in stuff_memory_list.keys():
+                            panoptic_seg[mask] = stuff_memory_list[int(pred_class)]
+                            continue
+                        else:
+                            stuff_memory_list[int(pred_class)] = current_segment_id + 1
 
-                segments_info.append(
-                    {
-                        "id": current_segment_id,
-                        "isthing": bool(isthing),
-                        "category_id": int(pred_class),
-                    }
-                )
+                    current_segment_id += 1
+                    panoptic_seg[mask] = current_segment_id
 
-        return panoptic_seg, segments_info
+                    segments_info.append(
+                        {
+                            "id": current_segment_id,
+                            "isthing": bool(isthing),
+                            "category_id": int(pred_class),
+                        }
+                    )
+
+            return panoptic_seg, segments_info
 
     def instance_inference(self, mask_cls, mask_pred):
         # mask_pred is already processed to have the same shape as original input
         image_size = mask_pred.shape[-2:]
 
         # [Q, K]
+        #if not PERFECT_MASKS:
+        #    scores = F.softmax(mask_cls, dim=-1)
+        #else:
         scores = mask_cls.to(self.device)
         # if this is panoptic segmentation
         if self.panoptic_on:
