@@ -178,7 +178,7 @@ class CategoryInfo:
 CATEGORIES_INFO = defaultdict(CategoryInfo)
 MISSCLASSIFICATION_INFO = MissclassificationInfo()
 MISSCLASSIFICATION_INFO_BEST_MASKS = MissclassificationInfo()
-PERFECT_MASKS = False
+PERFECT_MASKS = True
 
 def batched_cosine_similarity_loss(A, B):
     A_normalized = F.normalize(A, p=2, dim=2) 
@@ -190,6 +190,12 @@ def batched_cosine_similarity_loss(A, B):
     
     loss = 1 - torch.mean(mean_cosine_sim)  # Scalar loss
     return loss
+
+def linear_warmup(step, total_warmup_steps, final_value):
+    if total_warmup_steps == 0:
+        return final_value
+
+    return min(final_value, final_value * step / total_warmup_steps)
 
 @META_ARCH_REGISTRY.register()
 class MYFCCLIP(nn.Module):
@@ -206,6 +212,7 @@ class MYFCCLIP(nn.Module):
         sem_seg_head: nn.Module,
         weight_dict: dict,
         embedding_reduction: nn.Module,
+        dist_warmup_iters: int,
         loss: str,
         pooling_weights: nn.Parameter,
         use_pooling_weights: bool,
@@ -256,6 +263,8 @@ class MYFCCLIP(nn.Module):
         self.backbone = backbone
         self.weight_dict = weight_dict
         self.frozen_backbone = frozen_backbone
+        self.dist_warmup_iters = dist_warmup_iters
+        self.iter = 0
         self.sem_seg_head = sem_seg_head
         self.loss = loss
         self.pooling_weights = pooling_weights
@@ -433,6 +442,7 @@ class MYFCCLIP(nn.Module):
             "embedding_reduction": embedding_reduction,
             "frozen_backbone": frozen_backbone,
             "sem_seg_head": sem_seg_head,
+            "dist_warmup_iters": cfg.MODEL.FC_CLIP.DIST_WARMUP_ITERS,
             "loss": cfg.MODEL.FC_CLIP.LOSS,
             "use_pooling_weights": cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS,
             "pooling_weights": pool_weights,
@@ -577,9 +587,13 @@ class MYFCCLIP(nn.Module):
             else:
                 dist_loss = batched_cosine_similarity_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
 
+
+            dist_weight = linear_warmup(self.iter, self.dist_warmup_iters, self.weight_dict["dist_loss"])
+            self.iter += 1
+
             losses = {
                 "ce_loss": ce_loss * self.weight_dict["ce_loss"],
-                "dist_loss": dist_loss * self.weight_dict["dist_loss"],
+                "dist_loss": dist_loss * dist_weight,
             }
 
             wandb.log(losses)
