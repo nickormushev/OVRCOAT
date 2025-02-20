@@ -529,9 +529,14 @@ class MYFCCLIP(nn.Module):
         frozen_features = self.frozen_backbone(images.tensor)
         text_classifier, num_templates = self.get_text_classifier()
 
-        params = []
-        for param in self.backbone.parameters():
-            params.append(param)
+        if self.training:
+            self.train()
+            self.backbone.train()
+            self.void_embedding.train()
+        else:
+            self.eval()
+            self.backbone.eval()
+            self.void_embedding.eval()
 
         clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
         frozen_clip_feature = frozen_features["clip_vis_dense"]
