@@ -1,5 +1,6 @@
 import wandb
 import yaml
+import re
 
 """
 This file may have been modified by Bytedance Ltd. and/or its affiliates (“Bytedance's Modifications”).
@@ -65,6 +66,9 @@ from fcclip import (
     add_fcclip_config
 )
 
+
+def add_sufix_to_keys(original_dict, suffix):
+    return {f"{key}{suffix}": value for key, value in original_dict.items()}
 
 class Trainer(DefaultTrainer):
     """
@@ -164,9 +168,8 @@ class Trainer(DefaultTrainer):
         """
 
         mapper = None
-
-        if dataset_name == 'openvocab_ade20k_panoptic_val':
-            mapper = MaskFormerPanopticDatasetMapper(cfg, True, random_flip=False)
+        #if dataset_name == 'openvocab_ade20k_panoptic_val':
+        mapper = MaskFormerPanopticDatasetMapper(cfg, True, random_flip=False)
 
         return build_detection_test_loader(cfg, dataset_name, mapper=mapper)
 
@@ -328,7 +331,8 @@ def main(args):
     cfg_dict  = yaml.safe_load(dump)
 
     wandb.init(
-        project="segmentation-clip",
+        name="L2-COCO-NO-GRAD",
+        project="segmentation-clip-detailed-no-norm",
         config=cfg_dict
     )
 
@@ -347,15 +351,32 @@ def main(args):
                 continue
             frozen_params_exclude_text += p.numel()    
         print(f"total_params: {total_params}, trainable_params: {trainable_params}, frozen_params: {frozen_params}, frozen_params_exclude_text: {frozen_params_exclude_text}")
+        files = sorted(os.listdir(cfg.OUTPUT_DIR))
+        for file in files:
+            if file.endswith(".pth"):
+                model_path = os.path.join(cfg.OUTPUT_DIR, file)
 
-        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
-            cfg.MODEL.WEIGHTS, resume=args.resume
-        )
-        res = Trainer.test(cfg, model)
-        if cfg.TEST.AUG.ENABLED:
-            res.update(Trainer.test_with_TTA(cfg, model))
-        if comm.is_main_process():
-            verify_results(cfg, res)
+                cfg.defrost()
+                cfg.MODEL.WEIGHTS = model_path
+                cfg.freeze()
+
+                match = re.search(r'model_(\d+)\.pth', model_path)
+                if match:
+                    model_number = int(match.group(1))
+                else:
+                    continue
+
+                DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+                    cfg.MODEL.WEIGHTS, resume=args.resume
+                )
+
+                res = Trainer.test(cfg, model)
+                if cfg.TEST.AUG.ENABLED:
+                    res.update(Trainer.test_with_TTA(cfg, model))
+                if comm.is_main_process():
+                    verify_results(cfg, res)
+
+                wandb.log(add_sufix_to_keys(res['panoptic_seg'], "_COCO_PERFECT"), step=model_number)
         return res
 
     trainer = Trainer(cfg)
