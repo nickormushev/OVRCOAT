@@ -605,58 +605,59 @@ class MYFCCLIP(nn.Module):
 
             return losses
         else:
-            # TODO: Add to config or smth
-            if PERFECT_MASKS == True:
-                # We ensemble the pred logits of in-vocab and out-vocab
-                mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
+            with torch.no_grad():
+                ## TODO: Add to config or smth
+                if PERFECT_MASKS == True:
+                    # We ensemble the pred logits of in-vocab and out-vocab
+                    mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
-                out_vocab_cls_probs = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
+                    out_vocab_cls_probs = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
 
-                mask_pred_results = mask_pred_results.unsqueeze(0).float().to(self.device)
-                mask_cls_results = out_vocab_cls_probs
+                    mask_pred_results = mask_pred_results.unsqueeze(0).float().to(self.device)
+                    mask_cls_results = out_vocab_cls_probs
 
-            else:
-                frozen_features['text_classifier'] = text_classifier
-                frozen_features['num_templates'] = num_templates
-                mask_2_former_outputs = self.sem_seg_head(frozen_features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
+                else:
+                    frozen_features['text_classifier'] = text_classifier
+                    frozen_features['num_templates'] = num_templates
+                    mask_2_former_outputs = self.sem_seg_head(frozen_features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
 
-                mask_pred_results = mask_2_former_outputs["pred_masks"]
-                mask_cls_results = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
+                    mask_pred_results = mask_2_former_outputs["pred_masks"]
+                    mask_cls_results = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
             
 
-            processed_results = []
-            for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
-                mask_cls_results, mask_pred_results, batched_inputs, images.image_sizes
-            ):
-                height = input_per_image.get("height", image_size[0])
-                width = input_per_image.get("width", image_size[1])
-                processed_results.append({})
+                processed_results = []
+                for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
+                    mask_cls_results, mask_pred_results, batched_inputs, images.image_sizes
+                ):
+                    height = input_per_image.get("height", image_size[0])
+                    width = input_per_image.get("width", image_size[1])
+                    processed_results.append({})
 
-                if self.sem_seg_postprocess_before_inference:
-                    mask_pred_result = retry_if_cuda_oom(sem_seg_postprocess)( # Is literally just upsampling
-                        mask_pred_result, image_size, height, width
-                    )
-                    mask_cls_result = mask_cls_result.to(mask_pred_result)
+                    if self.sem_seg_postprocess_before_inference:
+                        mask_pred_result = retry_if_cuda_oom(sem_seg_postprocess)( # Is literally just upsampling
+                            mask_pred_result, image_size, height, width
+                        )
+                        mask_cls_result = mask_cls_result.to(mask_pred_result)
 
-                # Use oracle to fix classes based on gt
-                # semantic segmentation inference
-                if self.semantic_on:
-                    r = retry_if_cuda_oom(self.semantic_inference)(mask_cls_result, mask_pred_result) # Multiplies class with mask results
-                    if not self.sem_seg_postprocess_before_inference:
-                        r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
-                    processed_results[-1]["sem_seg"] = r
+                    # Use oracle to fix classes based on gt
+                    # semantic segmentation inference
+                    if self.semantic_on:
+                        r = retry_if_cuda_oom(self.semantic_inference)(mask_cls_result, mask_pred_result) # Multiplies class with mask results
+                        if not self.sem_seg_postprocess_before_inference:
+                            r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
+                        processed_results[-1]["sem_seg"] = r
 
-                # panoptic segmentation inference
-                if self.panoptic_on:
-                    panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result)
-                    processed_results[-1]["panoptic_seg"] = panoptic_r
-                
-                # instance segmentation inference
-                if self.instance_on:
-                    instance_r = retry_if_cuda_oom(self.instance_inference)(mask_cls_result, mask_pred_result)
-                    processed_results[-1]["instances"] = instance_r
+                    # panoptic segmentation inference
+                    if self.panoptic_on:
+                        panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result)
+                        processed_results[-1]["panoptic_seg"] = panoptic_r
 
-            return processed_results
+                    # instance segmentation inference
+                    if self.instance_on:
+                        instance_r = retry_if_cuda_oom(self.instance_inference)(mask_cls_result, mask_pred_result)
+                        processed_results[-1]["instances"] = instance_r
+
+                return processed_results
 
     def prepare_targets(self, targets, images):
         h_pad, w_pad = images.tensor.shape[-2:]
@@ -684,7 +685,7 @@ class MYFCCLIP(nn.Module):
 
     def panoptic_inference(self, mask_cls, mask_pred):
         if not PERFECT_MASKS:
-            mask_cls = mask_cls.max(-1)
+            scores, labels = mask_cls.max(-1)
             mask_pred = mask_pred.sigmoid()
         else: 
             scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
