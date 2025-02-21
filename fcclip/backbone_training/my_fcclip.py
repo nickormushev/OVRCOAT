@@ -263,9 +263,11 @@ class MYFCCLIP(nn.Module):
         self.backbone = backbone
         self.weight_dict = weight_dict
         self.frozen_backbone = frozen_backbone
+        self.frozen_backbone.eval()
         self.dist_warmup_iters = dist_warmup_iters
         self.iter = 0
         self.sem_seg_head = sem_seg_head
+        self.sem_seg_head.eval()
         self.loss = loss
         self.pooling_weights = pooling_weights
         self.num_queries = num_queries
@@ -525,10 +527,6 @@ class MYFCCLIP(nn.Module):
         # ImageList stores images in varying shapes by padding them to same size
         images = ImageList.from_tensors(images, self.size_divisibility)
 
-        features = self.backbone(images.tensor)
-        frozen_features = self.frozen_backbone(images.tensor)
-        text_classifier, num_templates = self.get_text_classifier()
-
         if self.training:
             self.train()
             self.backbone.train()
@@ -537,6 +535,10 @@ class MYFCCLIP(nn.Module):
             self.eval()
             self.backbone.eval()
             self.void_embedding.eval()
+
+        features = self.backbone(images.tensor)
+        frozen_features = self.frozen_backbone(images.tensor)
+        text_classifier, num_templates = self.get_text_classifier()
 
         clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
         frozen_clip_feature = frozen_features["clip_vis_dense"]
