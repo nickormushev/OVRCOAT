@@ -17,3 +17,6 @@ output/*
 fcclip_cocopan.pth
 wandb/*
 LR*
+
+TORCH*
+TRAIN*
