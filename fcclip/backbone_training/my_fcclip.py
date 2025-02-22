@@ -178,7 +178,7 @@ class CategoryInfo:
 CATEGORIES_INFO = defaultdict(CategoryInfo)
 MISSCLASSIFICATION_INFO = MissclassificationInfo()
 MISSCLASSIFICATION_INFO_BEST_MASKS = MissclassificationInfo()
-PERFECT_MASKS = True
+PERFECT_MASKS = False
 
 def batched_cosine_similarity_loss(A, B):
     A_normalized = F.normalize(A, p=2, dim=2) 
@@ -393,7 +393,7 @@ class MYFCCLIP(nn.Module):
 
     @classmethod
     def get_sem_seg_head(cls, cfg):
-        cfg.MODEL.WEIGHTS = "/home/nikolay/Downloads/fcclip_cocopan_r50.pth"
+        cfg.MODEL.WEIGHTS = "/home/nikolay/fcclip_cocopan_r50.pth"
         cfg.MODEL.META_ARCHITECTURE = "FCCLIP"
         model = build_model(cfg)
         checkpointer = DetectionCheckpointer(model)
@@ -527,14 +527,8 @@ class MYFCCLIP(nn.Module):
         # ImageList stores images in varying shapes by padding them to same size
         images = ImageList.from_tensors(images, self.size_divisibility)
 
-        if self.training:
-            self.train()
-            self.backbone.train()
-            self.void_embedding.train()
-        else:
-            self.eval()
-            self.backbone.eval()
-            self.void_embedding.eval()
+        self.frozen_backbone.eval()
+        self.sem_seg_head.eval()
 
         features = self.backbone(images.tensor)
         frozen_features = self.frozen_backbone(images.tensor)
@@ -581,9 +575,6 @@ class MYFCCLIP(nn.Module):
             reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
             reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0],
                                                                 frozen_clip_feature.shape[1], -1)
-
-            #reshaped_clip_feat = F.normalize(reshaped_clip_feat, dim=-1)
-            #reshaped_frozen_clip_feat = F.normalize(reshaped_frozen_clip_feat, dim=-1)
 
             # Calculate the Gram matrices using batch matrix multiplication
             gram_matrix_clip_feat = torch.bmm(reshaped_clip_feat, reshaped_clip_feat.transpose(1, 2))
