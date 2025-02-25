@@ -188,6 +188,8 @@ class PQStat():
 @get_traceback
 def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, categories):
     pq_stat = PQStat()
+    pq_stat_seen = PQStat()
+    pq_stat_unseen = PQStat()
 
     idx = 0
     for gt_ann, pred_ann in annotation_set:
@@ -262,6 +264,7 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
         gt_matched = set()
         pred_matched = set()
 
+        overlap = json.load(open("./tests/train_overlap.json", "r"))
         # For each pair of gt and pred
         missclassified_as_background_count = 0.0
         misslabeled = 0.0
@@ -300,6 +303,13 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                     misslabeled += 1
                     continue
 
+                if overlap[gt_category_id]:
+                    pq_stat_seen[gt_segms[gt_label]['category_id']].tp += 1
+                    pq_stat_seen[gt_segms[gt_label]['category_id']].iou += iou
+                else:
+                    pq_stat_unseen[gt_segms[gt_label]['category_id']].tp += 1
+                    pq_stat_unseen[gt_segms[gt_label]['category_id']].iou += iou
+
                 # If the category_id is not the same we skip. Not in my case
                 pq_stat[gt_segms[gt_label]['category_id']].tp += 1
                 pq_stat[gt_segms[gt_label]['category_id']].iou += iou
@@ -324,6 +334,11 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
 
             # not found or not matched
             pq_stat[gt_info['category_id']].fn += 1
+
+            if overlap[gt_info['category_id']]:
+                pq_stat_seen[gt_info['category_id']].fn += 1
+            else:
+                pq_stat_unseen[gt_info['category_id']].fn += 1
         
         # count false positives
         extra_preds = 0.0
@@ -344,12 +359,17 @@ def pq_compute_single_core(proc_id, annotation_set, gt_folder, pred_folder, cate
                 extra_preds += 1
                 continue
 
+            if overlap[pred_info['category_id']]:
+                pq_stat_seen[pred_info['category_id']].fp += 1
+            else:
+                pq_stat_unseen[pred_info['category_id']].fp += 1
+
             pq_stat[pred_info['category_id']].fp += 1
         if len(pred_segms) != 0:
             pq_stat.obj_recogn_per_img[gt_ann['image_id']].extra_objects = extra_preds
 
     print('Core: {}, all {} images processed'.format(proc_id, len(annotation_set)))
-    return pq_stat
+    return pq_stat, pq_stat_unseen, pq_stat_seen
 
 
 def pq_compute_multi_core(matched_annotations_list, gt_folder, pred_folder, categories):
@@ -371,9 +391,14 @@ def pq_compute_multi_core(matched_annotations_list, gt_folder, pred_folder, cate
 
 
     pq_stat = PQStat()
+    pq_stat_unseen = PQStat()
+    pq_stat_seen = PQStat()
     for p in processes:
-        pq_stat += p.get()
-    return pq_stat
+        pq_stat_proc, pq_stat_unseen_proc, pq_stat_seen_proc = p.get()
+        pq_stat += pq_stat_proc
+        pq_stat_unseen += pq_stat_unseen_proc
+        pq_stat_seen += pq_stat_seen_proc
+    return pq_stat, pq_stat_unseen, pq_stat_seen
 
 
 def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
@@ -411,7 +436,7 @@ def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
             raise Exception('no prediction for the image with id: {}'.format(image_id))
         matched_annotations_list.append((gt_ann, pred_annotations[image_id]))
 
-    pq_stat = pq_compute_multi_core(matched_annotations_list, gt_folder, pred_folder, categories)
+    pq_stat, pq_stat_unseen, pq_stat_seen = pq_compute_multi_core(matched_annotations_list, gt_folder, pred_folder, categories)
 
 
     found_objects = { img_id: obj_recogn.found_gt for img_id, obj_recogn in pq_stat.obj_recogn_per_img.items()}
@@ -431,8 +456,12 @@ def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
 
     metrics = [("All", None), ("Things", True), ("Stuff", False)]
     results = {}
+    results_seen = {}
+    results_unseen = {}
     for name, isthing in metrics:
         results[name], per_class_results = pq_stat.pq_average(categories, isthing=isthing)
+        results_seen[name], _ = pq_stat_seen.pq_average(categories, isthing=isthing)
+        results_unseen[name], _ = pq_stat_unseen.pq_average(categories, isthing=isthing)
         if name == 'All':
             results['per_class'] = per_class_results
     print("{:10s}| {:>5s}  {:>5s}  {:>5s} {:>5s}".format("", "PQ", "SQ", "RQ", "N"))
@@ -446,12 +475,26 @@ def pq_compute(gt_json_file, pred_json_file, gt_folder=None, pred_folder=None):
             100 * results[name]['rq'],
             results[name]['n'])
         )
+        print("{:10s}| {:5.1f}  {:5.1f}  {:5.1f} {:5d}".format(
+            name + "_seen",
+            100 * results_seen[name]['pq'],
+            100 * results_seen[name]['sq'],
+            100 * results_seen[name]['rq'],
+            results_seen[name]['n'])
+        )
+        print("{:10s}| {:5.1f}  {:5.1f}  {:5.1f} {:5d}".format(
+            name + "_unseen",
+            100 * results_unseen[name]['pq'],
+            100 * results_unseen[name]['sq'],
+            100 * results_unseen[name]['rq'],
+            results_unseen[name]['n'])
+        )
 
 
     t_delta = time.time() - start_time
     print("Time elapsed: {:0.2f} seconds".format(t_delta))
 
-    return results
+    return results, results_unseen, results_seen
 
 
 if __name__ == "__main__":
@@ -468,5 +511,29 @@ if __name__ == "__main__":
                               Default: X if the corresponding json file is X.json")
     args = parser.parse_args()
 
+    wandb.init(
+        name="L2-ADE20k-1",
+        project="segmentation-clip-detailed-no-norm",
+    )
+
     print(os.getcwd())
-    pq_compute(args.gt_json_file, args.pred_json_file, args.gt_folder, args.pred_folder)
+    for iter in ["0003999", "0007999", "0011999","0015999", "0019999"]:
+        pred_folder = f"{args.pred_folder}{iter}"
+        pred_json_file = f"{pred_folder}/annotations.json"
+        res, res_unseen, res_seen = pq_compute(args.gt_json_file, pred_json_file, args.gt_folder, pred_folder)
+        metrics = [("All", None), ("Things", True), ("Stuff", False)]
+
+        for name, _isthing in metrics:
+            wandb.log({
+                f"PQ_{name}": res[name]['pq'] * 100,
+                f"SQ_{name}": res[name]['sq'] * 100,
+                f"RQ_{name}": res[name]['rq'] * 100,
+
+                f"PQ_{name}_seen": res_seen[name]['pq'] * 100,
+                f"SQ_{name}_seen": res_seen[name]['sq'] * 100,
+                f"RQ_{name}_seen": res_seen[name]['rq'] * 100,
+
+                f"PQ_{name}_unseen": res_unseen[name]['pq'] * 100,
+                f"SQ_{name}_unseen": res_unseen[name]['sq'] * 100,
+                f"RQ_{name}_unseen": res_unseen[name]['rq'] * 100,
+            }, step=int(iter))
