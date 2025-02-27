@@ -1,4 +1,4 @@
-import torch
+import pandas as pd
 import sys
 import os
 import cv2
@@ -8,8 +8,11 @@ import numpy as np
 from tqdm import tqdm 
 import itertools
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from matplotlib import pyplot as plt
 from collections import defaultdict
+from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES, ADE20k_COLORS
 
 import multiprocessing as mp
 from detectron2.utils.visualizer import random_color
@@ -40,7 +43,7 @@ class TestConfig:
         # all of the below require run_tests to be true / use oracle
         self.use_oracle = True
 
-        self.use_clip_oracle = True
+        self.use_clip_oracle = False
         self.use_class_oracle = False
 
         self.calculate_confusion_matrix = False
@@ -74,6 +77,9 @@ from fcclip import MaskFormerPanopticDatasetMapper
 def setup_cfg(args):
     # load config from file and command-line arguments
     cfg = get_cfg()
+    cfg.MODEL.BACKBONE.FREEZE = True
+    cfg.TEST.PERFECT_MASKS = False
+    cfg.TEST.WITH_VOID = False
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
     add_fcclip_config(cfg)
@@ -128,6 +134,37 @@ def get_parser():
 
     return parser
 
+
+def extend_open_vocab_dataset():
+    info = pd.read_csv("/home/nikolay/fc-clip-fork/datasets/extend_object_info.csv", sep=";")
+    stuff_classes = ["" for _ in range(len(ADE20K_150_CATEGORIES))]
+    for i,row in enumerate(ADE20K_150_CATEGORIES):
+        for extended_row in info['Name']:
+            if extended_row.split(",")[0] == row['name'].split(",")[0]:
+                stuff_classes[i] = f"{extended_row}"
+
+
+    thing_dataset_id_to_contiguous_id = {}
+    stuff_dataset_id_to_contiguous_id = {}
+
+    for i, cat in enumerate(ADE20K_150_CATEGORIES):
+        if cat["isthing"]:
+            thing_dataset_id_to_contiguous_id[cat["id"]] = i
+
+        # in order to use sem_seg evaluator
+        stuff_dataset_id_to_contiguous_id[cat["id"]] = i
+
+
+    DatasetCatalog.register(
+        "openvocab_dataset", lambda x: []
+    )
+
+    return MetadataCatalog.get("openvocab_dataset").set(
+        stuff_classes=stuff_classes,
+        stuff_colors=ADE20k_COLORS[:],
+        thing_dataset_id_to_contiguous_id=thing_dataset_id_to_contiguous_id,
+        stuff_dataset_id_to_contiguous_id=stuff_dataset_id_to_contiguous_id
+    )
 
 # Dataset that combines labels from COCO, ADE20K and LVIS
 def create_open_vocab_dataset():
@@ -268,7 +305,7 @@ if __name__ == "__main__":
     cfg = setup_cfg(args)
 
     if test_cfg.use_extended_categories:
-        metadata = create_open_vocab_dataset()
+        metadata = extend_open_vocab_dataset()
     else:
         metadata = MetadataCatalog.get("openvocab_ade20k_panoptic_val")
 
