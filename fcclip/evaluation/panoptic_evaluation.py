@@ -41,7 +41,7 @@ class COCOPanopticWandbEvaluator(COCOPanopticEvaluator):
 
     def evaluate(self):
         res = super().evaluate()
-        wandb.log(res['panoptic_seg'])
+        #wandb.log(res['panoptic_seg'])
         return res
 
 # TODO: Validate calculations of missed objects again!
@@ -509,31 +509,40 @@ if __name__ == "__main__":
     parser.add_argument('--pred_folder', type=str, default=None,
                         help="Folder with prediction COCO format segmentations. \
                               Default: X if the corresponding json file is X.json")
+    parser.add_argument('--single-model',
+                        action="store_true",
+                        help="Single model used")
+
     args = parser.parse_args()
 
     wandb.init(
-        name="L2-ADE20k-1",
+        name="L2-ADE20k-CONVNEXT",
         project="segmentation-clip-detailed-no-norm",
     )
 
     print(os.getcwd())
-    for iter in ["0003999", "0007999", "0011999","0015999", "0019999"]:
-        pred_folder = f"{args.pred_folder}{iter}"
+    if args.single_model:
+        pred_folder = f"{args.pred_folder}"
         pred_json_file = f"{pred_folder}/annotations.json"
         res, res_unseen, res_seen = pq_compute(args.gt_json_file, pred_json_file, args.gt_folder, pred_folder)
-        metrics = [("All", None), ("Things", True), ("Stuff", False)]
+    else:
+        for iter in ["0003999", "0007999", "0011999","0015999", "0019999"]:
+            pred_folder = f"{args.pred_folder}{iter}"
+            pred_json_file = f"{pred_folder}/annotations.json"
+            res, res_unseen, res_seen = pq_compute(args.gt_json_file, pred_json_file, args.gt_folder, pred_folder)
+            metrics = [("All", None), ("Things", True), ("Stuff", False)]
 
-        for name, _isthing in metrics:
-            wandb.log({
-                f"PQ_{name}": res[name]['pq'] * 100,
-                f"SQ_{name}": res[name]['sq'] * 100,
-                f"RQ_{name}": res[name]['rq'] * 100,
+            for name, _isthing in metrics:
+                wandb.log({
+                    f"PQ_{name}": res[name]['pq'] * 100,
+                    f"SQ_{name}": res[name]['sq'] * 100,
+                    f"RQ_{name}": res[name]['rq'] * 100,
 
-                f"PQ_{name}_seen": res_seen[name]['pq'] * 100,
-                f"SQ_{name}_seen": res_seen[name]['sq'] * 100,
-                f"RQ_{name}_seen": res_seen[name]['rq'] * 100,
+                    f"PQ_{name}_seen": res_seen[name]['pq'] * 100,
+                    f"SQ_{name}_seen": res_seen[name]['sq'] * 100,
+                    f"RQ_{name}_seen": res_seen[name]['rq'] * 100,
 
-                f"PQ_{name}_unseen": res_unseen[name]['pq'] * 100,
-                f"SQ_{name}_unseen": res_unseen[name]['sq'] * 100,
-                f"RQ_{name}_unseen": res_unseen[name]['rq'] * 100,
-            }, step=int(iter))
+                    f"PQ_{name}_unseen": res_unseen[name]['pq'] * 100,
+                    f"SQ_{name}_unseen": res_unseen[name]['sq'] * 100,
+                    f"RQ_{name}_unseen": res_unseen[name]['rq'] * 100,
+                }, step=int(iter))
