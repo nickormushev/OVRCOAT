@@ -6,16 +6,16 @@ MODEL:
     NAME: "CLIP"
     FREEZE: False
   FC_CLIP:
-    CLIP_MODEL_NAME: "RN50"
-    CLIP_PRETRAINED_WEIGHTS: "openai"
-    SEM_SEG_WEIGHTS: "/home/nikolay/fcclip_cocopan_r50.pth"
-    EMBED_DIM: 1024
+    CLIP_MODEL_NAME: "convnext_large_d_320"
+    CLIP_PRETRAINED_WEIGHTS: "laion2b_s29b_b131k_ft_soup"
+    SEM_SEG_WEIGHTS: "/home/nikolay/fcclip_cocopan.pth"
+    EMBED_DIM: 768
     ENSEMBLE_ON_VALID_MASK: True
     USE_POOLING_WEIGHTS: False
     DIST_WEIGHT: 0.01
     CE_WEIGHT: 1.0
     LOSS: "l2"
-    DIST_WARMUP_ITERS: 0
+    DIST_WARMUP_ITERS: 3000
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.0001
@@ -35,8 +35,8 @@ SOLVER:
   AMP:
     ENABLED: False
 TEST:
-  PERFECT_MASKS: False
+  PERFECT_MASKS: True
   WITH_VOID: False
   EVAL_PERIOD: 4000
-#DATASETS:
-#  TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)
+DATASETS:
+  TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)

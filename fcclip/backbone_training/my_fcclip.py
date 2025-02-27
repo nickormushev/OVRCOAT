@@ -178,7 +178,6 @@ class CategoryInfo:
 CATEGORIES_INFO = defaultdict(CategoryInfo)
 MISSCLASSIFICATION_INFO = MissclassificationInfo()
 MISSCLASSIFICATION_INFO_BEST_MASKS = MissclassificationInfo()
-PERFECT_MASKS = False
 
 def batched_cosine_similarity_loss(A, B):
     A_normalized = F.normalize(A, p=2, dim=2) 
@@ -195,7 +194,7 @@ def linear_warmup(step, total_warmup_steps, final_value):
     if total_warmup_steps == 0:
         return final_value
 
-    return min(final_value, final_value * step / total_warmup_steps)
+    return 0 #min(final_value, final_value * step / total_warmup_steps)
 
 @META_ARCH_REGISTRY.register()
 class MYFCCLIP(nn.Module):
@@ -211,7 +210,8 @@ class MYFCCLIP(nn.Module):
         frozen_backbone: Backbone,
         sem_seg_head: nn.Module,
         weight_dict: dict,
-        embedding_reduction: nn.Module,
+        test_perfect_masks: bool,
+        test_with_void: bool,
         dist_warmup_iters: int,
         loss: str,
         pooling_weights: nn.Parameter,
@@ -265,6 +265,8 @@ class MYFCCLIP(nn.Module):
         self.frozen_backbone = frozen_backbone
         self.frozen_backbone.eval()
         self.dist_warmup_iters = dist_warmup_iters
+        self.test_perfect_masks = test_perfect_masks
+        self.test_with_void = test_with_void
         self.iter = 0
         self.sem_seg_head = sem_seg_head
         self.sem_seg_head.eval()
@@ -303,7 +305,6 @@ class MYFCCLIP(nn.Module):
         self.void_embedding = nn.Embedding(1, backbone.dim_latent) # use this for void
 
         self.use_pooling_weights = use_pooling_weights
-        self.embedding_reduction = embedding_reduction
 
         _, self.train_num_templates, self.train_class_names = self.prepare_class_names_from_metadata(train_metadata, train_metadata)
         self.category_overlapping_mask, self.test_num_templates, self.test_class_names = self.prepare_class_names_from_metadata(test_metadata, train_metadata)
@@ -393,7 +394,7 @@ class MYFCCLIP(nn.Module):
 
     @classmethod
     def get_sem_seg_head(cls, cfg):
-        cfg.MODEL.WEIGHTS = "/home/nikolay/fcclip_cocopan_r50.pth"
+        cfg.MODEL.WEIGHTS = cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS
         cfg.MODEL.META_ARCHITECTURE = "FCCLIP"
         model = build_model(cfg)
         checkpointer = DetectionCheckpointer(model)
@@ -435,15 +436,13 @@ class MYFCCLIP(nn.Module):
         else:
             pool_weights = None
 
-        reduce_to = 256  
-        embedding_reduction = None #nn.Conv2d(2048, reduce_to, kernel_size=1, stride=1, padding=0)
-
         return {
             "backbone": backbone,
             "weight_dict": weight_dict,
-            "embedding_reduction": embedding_reduction,
             "frozen_backbone": frozen_backbone,
             "sem_seg_head": sem_seg_head,
+            "test_with_void": cfg.TEST.WITH_VOID,
+            "test_perfect_masks": cfg.TEST.PERFECT_MASKS,
             "dist_warmup_iters": cfg.MODEL.FC_CLIP.DIST_WARMUP_ITERS,
             "loss": cfg.MODEL.FC_CLIP.LOSS,
             "use_pooling_weights": cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS,
@@ -479,7 +478,7 @@ class MYFCCLIP(nn.Module):
         mask_for_pooling = F.interpolate(masks, size=clip_features.shape[-2:], mode='bilinear', align_corners=False)
 
         if "convnext" in self.backbone.model_name.lower():
-            pooled_clip_feature = self.backbone.mask_pooling(clip_features, mask_for_pooling)  # Apply pooling with mask and get embedding
+            pooled_clip_feature = self.mask_pooling(clip_features, mask_for_pooling)  # Apply pooling with mask and get embedding
             pooled_clip_feature = self.backbone.visual_prediction_forward(pooled_clip_feature)
         elif "rn" in self.backbone.model_name.lower():
             pooled_clip_feature = self.backbone.visual_prediction_forward(clip_features, mask_for_pooling)
@@ -568,9 +567,6 @@ class MYFCCLIP(nn.Module):
             
             ce_loss = ce_loss / len(targets)
 
-            #reduced_frozen_clip_features = self.embedding_reduction(frozen_clip_feature)
-            #reduced_clip_features = self.embedding_reduction(clip_feature)
-
             # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
             reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
             reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0],
@@ -599,16 +595,14 @@ class MYFCCLIP(nn.Module):
             return losses
         else:
             with torch.no_grad():
-                ## TODO: Add to config or smth
-                if PERFECT_MASKS == True:
+                if self.test_perfect_masks == True:
                     # We ensemble the pred logits of in-vocab and out-vocab
                     mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
                     out_vocab_cls_probs = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
 
-                    mask_pred_results = mask_pred_results.unsqueeze(0).float().to(self.device)
+                    mask_pred_results = mask_pred_results.float().to(self.device)
                     mask_cls_results = out_vocab_cls_probs
-
                 else:
                     frozen_features['text_classifier'] = text_classifier
                     frozen_features['num_templates'] = num_templates
@@ -616,8 +610,23 @@ class MYFCCLIP(nn.Module):
 
                     mask_pred_results = mask_2_former_outputs["pred_masks"]
                     mask_cls_results = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
-            
 
+                    mask_pred_results = F.interpolate(
+                        mask_pred_results,
+                        size=(images.tensor.shape[-2], images.tensor.shape[-1]),
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+
+                    if self.test_with_void:
+                        clip_res = mask_2_former_outputs["pred_logits"]
+                        is_void_prob = F.softmax(clip_res, dim=-1)[..., -1:]
+                        cls_prob_no_void = mask_cls_results
+                        mask_cls_probs = torch.cat([
+                            cls_prob_no_void * (1.0 - is_void_prob),
+                            is_void_prob], dim=-1)
+                        mask_cls_results = torch.log(mask_cls_probs + 1e-8).softmax(-1)
+            
                 processed_results = []
                 for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
                     mask_cls_results, mask_pred_results, batched_inputs, images.image_sizes
@@ -669,7 +678,7 @@ class MYFCCLIP(nn.Module):
         return new_targets
 
     def semantic_inference(self, mask_cls, mask_pred):
-        if not PERFECT_MASKS:
+        if not self.test_perfect_masks:
             #mask_cls = F.softmax(mask_cls, dim=-1)
             mask_pred = mask_pred.sigmoid()
 
@@ -677,7 +686,7 @@ class MYFCCLIP(nn.Module):
         return semseg
 
     def panoptic_inference(self, mask_cls, mask_pred):
-        if not PERFECT_MASKS:
+        if not self.test_perfect_masks:
             scores, labels = mask_cls.max(-1)
             mask_pred = mask_pred.sigmoid()
         else: 
@@ -746,6 +755,10 @@ class MYFCCLIP(nn.Module):
         #    scores = F.softmax(mask_cls, dim=-1)
         #else:
         scores = mask_cls.to(self.device)
+
+        if self.test_with_void:
+            scores = scores[:, :-1]
+
         # if this is panoptic segmentation
         if self.panoptic_on:
             num_classes = len(self.test_metadata.stuff_classes)
