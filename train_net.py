@@ -311,6 +311,8 @@ def setup(args):
     """
     cfg = get_cfg()
     cfg.MODEL.BACKBONE.FREEZE = True
+    cfg.TEST.PERFECT_MASKS = False
+    cfg.TEST.WITH_VOID = False
     # for poly lr schedule
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
@@ -324,6 +326,23 @@ def setup(args):
     return cfg
 
 
+def run_eval(cfg, model, model_path, args):
+    cfg.defrost()
+    cfg.MODEL.WEIGHTS = model_path
+    cfg.freeze()
+
+    DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+        cfg.MODEL.WEIGHTS, resume=args.resume
+    )
+
+    res = Trainer.test(cfg, model)
+    if cfg.TEST.AUG.ENABLED:
+        res.update(Trainer.test_with_TTA(cfg, model))
+    if comm.is_main_process():
+        verify_results(cfg, res)
+    
+    return res
+
 def main(args):
     cfg = setup(args)
 
@@ -331,7 +350,7 @@ def main(args):
     cfg_dict  = yaml.safe_load(dump)
 
     wandb.init(
-        name="L2-COCO-NO-GRAD",
+        name=args.wandb_name,
         project="segmentation-clip-detailed-no-norm",
         config=cfg_dict
     )
@@ -351,32 +370,24 @@ def main(args):
                 continue
             frozen_params_exclude_text += p.numel()    
         print(f"total_params: {total_params}, trainable_params: {trainable_params}, frozen_params: {frozen_params}, frozen_params_exclude_text: {frozen_params_exclude_text}")
-        files = sorted(os.listdir(cfg.OUTPUT_DIR))
-        for file in files:
-            if file.endswith(".pth"):
-                model_path = os.path.join(cfg.OUTPUT_DIR, file)
 
-                cfg.defrost()
-                cfg.MODEL.WEIGHTS = model_path
-                cfg.freeze()
+        if args.single_model:
+            res = run_eval(cfg, model, cfg.MODEL.WEIGHTS, args)
+            wandb.log(add_sufix_to_keys(res['panoptic_seg'], args.metric_suffix))
+        else:
+            files = sorted(os.listdir(cfg.OUTPUT_DIR))
+            for file in files:
+                if file.endswith(".pth"):
+                    model_path = os.path.join(cfg.OUTPUT_DIR, file)
 
-                match = re.search(r'model_(\d+)\.pth', model_path)
-                if match:
-                    model_number = int(match.group(1))
-                else:
-                    continue
-
-                DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
-                    cfg.MODEL.WEIGHTS, resume=args.resume
-                )
-
-                res = Trainer.test(cfg, model)
-                if cfg.TEST.AUG.ENABLED:
-                    res.update(Trainer.test_with_TTA(cfg, model))
-                if comm.is_main_process():
-                    verify_results(cfg, res)
-
-                wandb.log(add_sufix_to_keys(res['panoptic_seg'], "_COCO_PERFECT"), step=model_number)
+                    match = re.search(r'model_(\d+)\.pth', model_path)
+                    if match:
+                        model_number = int(match.group(1))
+                    else:
+                        continue
+                
+                    res = run_eval(cfg, model, model_path, args)
+                    wandb.log(add_sufix_to_keys(res['panoptic_seg'], args.metric_suffix), step=model_number)
         return res
 
     trainer = Trainer(cfg)
@@ -384,8 +395,32 @@ def main(args):
     return trainer.train()
 
 
+def get_parser():
+    parser = default_argument_parser()
+    parser.add_argument(
+        "--wandb-name",
+        default="TEST",
+        help="WANDB run name",
+        type=str,
+    )
+    parser.add_argument(
+        "--metric-suffix",
+        default="",
+        help="Suffix to add to the metric keys",
+        type=str,
+    )
+
+    parser.add_argument(
+        "--single-model",
+        action="store_true",
+        help="Evaluate a single model",
+    )
+
+    return parser
+
 if __name__ == "__main__":
-    args = default_argument_parser().parse_args()
+    args = get_parser().parse_args()
+
     print("Command Line Args:", args)
     launch(
         main,
