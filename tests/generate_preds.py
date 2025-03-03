@@ -80,6 +80,7 @@ def setup_cfg(args):
     cfg.MODEL.BACKBONE.FREEZE = True
     cfg.TEST.PERFECT_MASKS = False
     cfg.TEST.WITH_VOID = False
+    cfg.TEST.WITH_FC_CLIP = False
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
     add_fcclip_config(cfg)
@@ -136,10 +137,12 @@ def get_parser():
 
 
 def extend_open_vocab_dataset():
-    info = pd.read_csv("/home/nikolay/fc-clip-fork/datasets/extend_object_info.csv", sep=";")
+    info = pd.read_csv("/home/nikolay/fc-clip-fork/datasets/extend_object_info_one_word.csv")
     stuff_classes = ["" for _ in range(len(ADE20K_150_CATEGORIES))]
+
+    # Save the DataFrame to a CSV file
     for i,row in enumerate(ADE20K_150_CATEGORIES):
-        for extended_row in info['Name']:
+        for extended_row in info['name']:
             if extended_row.split(",")[0] == row['name'].split(",")[0]:
                 stuff_classes[i] = f"{extended_row}"
 

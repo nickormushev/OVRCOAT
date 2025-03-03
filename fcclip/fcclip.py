@@ -889,8 +889,6 @@ class FCCLIP(nn.Module):
                 * (1 - category_overlapping_mask) # If pixel not seen during training we use this classifier
             )
 
-            json.dump(self.category_overlapping_mask.tolist(), open('train_overlap.json', 'w'))
-
             cls_results = cls_logits_seen + cls_logits_unseen # Combine predictions
 
             # This is used to filtering void predictions. Uses the Mask2Former results for is_void_prob

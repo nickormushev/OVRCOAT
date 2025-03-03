@@ -513,10 +513,14 @@ if __name__ == "__main__":
                         action="store_true",
                         help="Single model used")
 
+    parser.add_argument('--wandb-name',
+                        default="TEST",
+                        help="")
+
     args = parser.parse_args()
 
     wandb.init(
-        name="L2-ADE20k-CONVNEXT",
+        name=args.wandb_name,
         project="segmentation-clip-detailed-no-norm",
     )
 

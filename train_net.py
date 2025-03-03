@@ -1,6 +1,10 @@
+import torch.distributed as dist
 import wandb
 import yaml
 import re
+
+def is_main_process():
+    return not dist.is_initialized() or dist.get_rank() == 0
 
 """
 This file may have been modified by Bytedance Ltd. and/or its affiliates (“Bytedance's Modifications”).
@@ -313,6 +317,7 @@ def setup(args):
     cfg.MODEL.BACKBONE.FREEZE = True
     cfg.TEST.PERFECT_MASKS = False
     cfg.TEST.WITH_VOID = False
+    cfg.TEST.WITH_FC_CLIP = False
     # for poly lr schedule
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
@@ -349,11 +354,12 @@ def main(args):
     dump = cfg.dump()
     cfg_dict  = yaml.safe_load(dump)
 
-    wandb.init(
-        name=args.wandb_name,
-        project="segmentation-clip-detailed-no-norm",
-        config=cfg_dict
-    )
+    if is_main_process():
+        wandb.init(
+            name=args.wandb_name,
+            project="segmentation-clip-detailed-no-norm",
+            config=cfg_dict
+        )
 
     if args.eval_only:
         model = Trainer.build_model(cfg)
@@ -387,7 +393,8 @@ def main(args):
                         continue
                 
                     res = run_eval(cfg, model, model_path, args)
-                    wandb.log(add_sufix_to_keys(res['panoptic_seg'], args.metric_suffix), step=model_number)
+                    if is_main_process():
+                        wandb.log(add_sufix_to_keys(res['panoptic_seg'], args.metric_suffix), step=model_number)
         return res
 
     trainer = Trainer(cfg)

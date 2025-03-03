@@ -212,6 +212,7 @@ class MYFCCLIP(nn.Module):
         weight_dict: dict,
         test_perfect_masks: bool,
         test_with_void: bool,
+        test_with_fc_clip: bool,
         dist_warmup_iters: int,
         loss: str,
         pooling_weights: nn.Parameter,
@@ -267,6 +268,7 @@ class MYFCCLIP(nn.Module):
         self.dist_warmup_iters = dist_warmup_iters
         self.test_perfect_masks = test_perfect_masks
         self.test_with_void = test_with_void
+        self.test_with_fc_clip = test_with_fc_clip
         self.iter = 0
         self.sem_seg_head = sem_seg_head
         self.sem_seg_head.eval()
@@ -442,6 +444,7 @@ class MYFCCLIP(nn.Module):
             "frozen_backbone": frozen_backbone,
             "sem_seg_head": sem_seg_head,
             "test_with_void": cfg.TEST.WITH_VOID,
+            "test_with_fc_clip": cfg.TEST.WITH_FC_CLIP,
             "test_perfect_masks": cfg.TEST.PERFECT_MASKS,
             "dist_warmup_iters": cfg.MODEL.FC_CLIP.DIST_WARMUP_ITERS,
             "loss": cfg.MODEL.FC_CLIP.LOSS,
@@ -473,6 +476,45 @@ class MYFCCLIP(nn.Module):
     @property
     def device(self):
         return self.pixel_mean.device
+    
+    def ensemble_classifications(self, mask_cls_results, out_vocab_cls_probs, mask_for_pooling):
+        in_vocab_cls_results = mask_cls_results[..., :-1] # remove void
+
+        in_vocab_cls_results = in_vocab_cls_results.softmax(-1)
+        category_overlapping_mask = self.category_overlapping_mask.to(self.device) # Says if a pixel is seen before
+
+        if self.ensemble_on_valid_mask:
+            # Only include out_vocab cls results on masks with valid pixels
+            # We empirically find that this is important to obtain reasonable AP/mIOU score with ResNet CLIP models
+            valid_masking = (mask_for_pooling > 0).to(mask_for_pooling).sum(-1).sum(-1) > 0
+            valid_masking = valid_masking.to(in_vocab_cls_results.dtype).unsqueeze(-1)
+            alpha = torch.ones_like(in_vocab_cls_results) * self.geometric_ensemble_alpha
+            beta = torch.ones_like(in_vocab_cls_results) * self.geometric_ensemble_beta
+            alpha = alpha * valid_masking
+            beta = beta * valid_masking
+        else:
+            alpha = self.geometric_ensemble_alpha
+            beta = self.geometric_ensemble_beta
+
+        cls_logits_seen = (
+            (in_vocab_cls_results ** (1 - alpha) * out_vocab_cls_probs**alpha).log()
+            * category_overlapping_mask # If pixel is seen during training we use this classifier
+        )
+        cls_logits_unseen = (
+            (in_vocab_cls_results ** (1 - beta) * out_vocab_cls_probs**beta).log()
+            * (1 - category_overlapping_mask) # If pixel not seen during training we use this classifier
+        )
+
+        cls_results = cls_logits_seen + cls_logits_unseen # Combine predictions
+
+        is_void_prob = F.softmax(mask_cls_results, dim=-1)[..., -1:]
+        cls_prob_no_void = cls_results.softmax(-1)
+        mask_cls_probs = torch.cat([
+            cls_prob_no_void * (1.0 - is_void_prob),
+            is_void_prob], dim=-1)
+        mask_cls_results = torch.log(mask_cls_probs + 1e-8).softmax(-1)
+    
+        return mask_cls_results
 
     def out_of_vocab_classification(self, masks, clip_features, text_classifier, num_templates):
         mask_for_pooling = F.interpolate(masks, size=clip_features.shape[-2:], mode='bilinear', align_corners=False)
@@ -493,7 +535,7 @@ class MYFCCLIP(nn.Module):
         out_vocab_cls_results = out_vocab_cls_results[..., :-1]
         out_vocab_cls_results = out_vocab_cls_results.softmax(-1)
 
-        return out_vocab_cls_results
+        return out_vocab_cls_results, mask_for_pooling
 
     def forward(self, batched_inputs):
         """
@@ -595,11 +637,11 @@ class MYFCCLIP(nn.Module):
             return losses
         else:
             with torch.no_grad():
-                if self.test_perfect_masks == True:
+                if self.test_perfect_masks:
                     # We ensemble the pred logits of in-vocab and out-vocab
                     mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
-                    out_vocab_cls_probs = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
+                    out_vocab_cls_probs, _ = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
 
                     mask_pred_results = mask_pred_results.float().to(self.device)
                     mask_cls_results = out_vocab_cls_probs
@@ -609,14 +651,11 @@ class MYFCCLIP(nn.Module):
                     mask_2_former_outputs = self.sem_seg_head(frozen_features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
 
                     mask_pred_results = mask_2_former_outputs["pred_masks"]
-                    mask_cls_results = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
+                    mask_cls_results, mask_for_pooling = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
 
-                    mask_pred_results = F.interpolate(
-                        mask_pred_results,
-                        size=(images.tensor.shape[-2], images.tensor.shape[-1]),
-                        mode="bilinear",
-                        align_corners=False,
-                    )
+                    if self.test_with_fc_clip:
+                       mask_cls_results = self.ensemble_classifications(mask_2_former_outputs["pred_logits"],
+                                                                mask_cls_results, mask_for_pooling)
 
                     if self.test_with_void:
                         clip_res = mask_2_former_outputs["pred_logits"]
@@ -626,6 +665,13 @@ class MYFCCLIP(nn.Module):
                             cls_prob_no_void * (1.0 - is_void_prob),
                             is_void_prob], dim=-1)
                         mask_cls_results = torch.log(mask_cls_probs + 1e-8).softmax(-1)
+
+                    mask_pred_results = F.interpolate(
+                        mask_pred_results,
+                        size=(images.tensor.shape[-2], images.tensor.shape[-1]),
+                        mode="bilinear",
+                        align_corners=False,
+                    )
             
                 processed_results = []
                 for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
@@ -756,7 +802,7 @@ class MYFCCLIP(nn.Module):
         #else:
         scores = mask_cls.to(self.device)
 
-        if self.test_with_void:
+        if self.test_with_void or self.test_with_fc_clip:
             scores = scores[:, :-1]
 
         # if this is panoptic segmentation
