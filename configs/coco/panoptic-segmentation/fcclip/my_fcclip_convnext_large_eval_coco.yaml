@@ -10,12 +10,13 @@ MODEL:
     CLIP_PRETRAINED_WEIGHTS: "laion2b_s29b_b131k_ft_soup"
     SEM_SEG_WEIGHTS: "/home/nikolay/fcclip_cocopan.pth"
     EMBED_DIM: 768
-    ENSEMBLE_ON_VALID_MASK: True
+    GEOMETRIC_ENSEMBLE_ALPHA: 0.4
+    GEOMETRIC_ENSEMBLE_BETA: 0.8
     USE_POOLING_WEIGHTS: False
-    DIST_WEIGHT: 0.01
-    CE_WEIGHT: 1.0
+    DIST_WEIGHT: 0.02
+    CE_WEIGHT: 2.0
     LOSS: "l2"
-    DIST_WARMUP_ITERS: 3000
+    DIST_WARMUP_ITERS: 0
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.0001
@@ -34,9 +35,20 @@ SOLVER:
     NORM_TYPE: 2.0
   AMP:
     ENABLED: False
+TRAIN:
+  LOSSES:
+    - "oov_ce"
+    #- "masks"
+    #- "labels"
+  WITH_FC_CLIP_MASKS: True
+  SEG_HEAD: False
 TEST:
-  PERFECT_MASKS: True
+  PERFECT_MASKS: False
   WITH_VOID: False
+  WITH_FC_CLIP: True
   EVAL_PERIOD: 4000
+DATALOADER:
+  FILTER_EMPTY_ANNOTATIONS: True
+  NUM_WORKERS: 2
 DATASETS:
   TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)

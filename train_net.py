@@ -2,6 +2,7 @@ import torch.distributed as dist
 import wandb
 import yaml
 import re
+from detectron2.config.config import CfgNode as CN
 
 def is_main_process():
     return not dist.is_initialized() or dist.get_rank() == 0
@@ -318,6 +319,12 @@ def setup(args):
     cfg.TEST.PERFECT_MASKS = False
     cfg.TEST.WITH_VOID = False
     cfg.TEST.WITH_FC_CLIP = False
+
+    cfg.TRAIN = CN()
+    cfg.TRAIN.SEG_HEAD = False
+    cfg.TRAIN.WITH_FC_CLIP_MASKS = False
+    cfg.TRAIN.LOSSES = ["oov_ce"]
+
     # for poly lr schedule
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)

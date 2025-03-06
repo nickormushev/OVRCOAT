@@ -193,8 +193,7 @@ def batched_cosine_similarity_loss(A, B):
 def linear_warmup(step, total_warmup_steps, final_value):
     if total_warmup_steps == 0:
         return final_value
-
-    return 0 #min(final_value, final_value * step / total_warmup_steps)
+    return min(final_value, final_value * step / total_warmup_steps)
 
 @META_ARCH_REGISTRY.register()
 class MYFCCLIP(nn.Module):
@@ -209,7 +208,10 @@ class MYFCCLIP(nn.Module):
         backbone: Backbone,
         frozen_backbone: Backbone,
         sem_seg_head: nn.Module,
+        criterion: nn.Module,
         weight_dict: dict,
+        train_with_fc_clip_masks: bool,
+        train_seg_head: bool,
         test_perfect_masks: bool,
         test_with_void: bool,
         test_with_fc_clip: bool,
@@ -292,6 +294,10 @@ class MYFCCLIP(nn.Module):
         self.instance_on = instance_on
         self.panoptic_on = panoptic_on
         self.test_topk_per_image = test_topk_per_image
+
+        self.train_with_fc_clip_masks = train_with_fc_clip_masks
+        self.train_seg_head = train_seg_head
+        self.criterion = criterion
 
         if not self.semantic_on:
             assert self.sem_seg_postprocess_before_inference
@@ -395,6 +401,50 @@ class MYFCCLIP(nn.Module):
             return self.test_text_classifier, self.test_num_templates
 
     @classmethod
+    def get_criterion(cls, cfg, num_classes):
+        # loss weights
+        class_weight = cfg.MODEL.MASK_FORMER.CLASS_WEIGHT
+        dice_weight = cfg.MODEL.MASK_FORMER.DICE_WEIGHT
+        mask_weight = cfg.MODEL.MASK_FORMER.MASK_WEIGHT
+        oov_weight = cfg.MODEL.FC_CLIP.CE_WEIGHT
+
+        # building criterion
+        matcher = HungarianMatcher(
+            cost_class=class_weight,
+            cost_oov=oov_weight,
+            cost_mask=mask_weight,
+            cost_dice=dice_weight,
+            num_points=cfg.MODEL.MASK_FORMER.TRAIN_NUM_POINTS,
+        )
+
+        weight_dict = {"loss_ce": class_weight,
+                        "loss_mask": mask_weight,
+                        "loss_dice": dice_weight,
+                        "loss_oov_ce": oov_weight}
+
+        deep_supervision = cfg.MODEL.MASK_FORMER.DEEP_SUPERVISION
+        no_object_weight = cfg.MODEL.MASK_FORMER.NO_OBJECT_WEIGHT
+        if deep_supervision:
+            dec_layers = cfg.MODEL.MASK_FORMER.DEC_LAYERS
+            aux_weight_dict = {}
+            for i in range(dec_layers - 1):
+                aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
+            weight_dict.update(aux_weight_dict)
+
+        #losses = ["labels", "masks", "oov_ce"]
+        losses = cfg.TRAIN.LOSSES
+        return SetCriterion(
+            num_classes,
+            matcher=matcher,
+            weight_dict=weight_dict,
+            eos_coef=no_object_weight,
+            losses=losses,
+            num_points=cfg.MODEL.MASK_FORMER.TRAIN_NUM_POINTS,
+            oversample_ratio=cfg.MODEL.MASK_FORMER.OVERSAMPLE_RATIO,
+            importance_sample_ratio=cfg.MODEL.MASK_FORMER.IMPORTANCE_SAMPLE_RATIO,
+        )
+
+    @classmethod
     def get_sem_seg_head(cls, cfg):
         cfg.MODEL.WEIGHTS = cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS
         cfg.MODEL.META_ARCHITECTURE = "FCCLIP"
@@ -403,9 +453,10 @@ class MYFCCLIP(nn.Module):
         checkpointer.load(cfg.MODEL.WEIGHTS)
         sem_seg_head = model.sem_seg_head
 
-        # Freeze all parameters of sem_seg_head
-        for param in sem_seg_head.parameters():
-            param.requires_grad = False
+        if not cfg.TRAIN.SEG_HEAD:
+            # Freeze all parameters of sem_seg_head
+            for param in sem_seg_head.parameters():
+                param.requires_grad = False
 
         del model
         cfg.MODEL.WEIGHTS = ""
@@ -438,11 +489,16 @@ class MYFCCLIP(nn.Module):
         else:
             pool_weights = None
 
+        criterion = MYFCCLIP.get_criterion(cfg, sem_seg_head.num_classes)
+
         return {
             "backbone": backbone,
             "weight_dict": weight_dict,
             "frozen_backbone": frozen_backbone,
             "sem_seg_head": sem_seg_head,
+            "criterion": criterion,
+            "train_with_fc_clip_masks": cfg.TRAIN.WITH_FC_CLIP_MASKS,
+            "train_seg_head": cfg.TRAIN.SEG_HEAD,
             "test_with_void": cfg.TEST.WITH_VOID,
             "test_with_fc_clip": cfg.TEST.WITH_FC_CLIP,
             "test_perfect_masks": cfg.TEST.PERFECT_MASKS,
@@ -516,8 +572,8 @@ class MYFCCLIP(nn.Module):
     
         return mask_cls_results
 
-    def out_of_vocab_classification(self, masks, clip_features, text_classifier, num_templates):
-        mask_for_pooling = F.interpolate(masks, size=clip_features.shape[-2:], mode='bilinear', align_corners=False)
+    def out_of_vocab_classification(self, masks, clip_features, text_classifier, num_templates, interpolate_mode="bilinear"):
+        mask_for_pooling = F.interpolate(masks, size=clip_features.shape[-2:], mode=interpolate_mode, align_corners=False)
 
         if "convnext" in self.backbone.model_name.lower():
             pooled_clip_feature = self.mask_pooling(clip_features, mask_for_pooling)  # Apply pooling with mask and get embedding
@@ -536,6 +592,80 @@ class MYFCCLIP(nn.Module):
         out_vocab_cls_results = out_vocab_cls_results.softmax(-1)
 
         return out_vocab_cls_results, mask_for_pooling
+    
+    def calculate_dist_loss(self, clip_feature, frozen_clip_feature):
+        # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
+        reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
+        reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0],
+                                                            frozen_clip_feature.shape[1], -1)
+
+        # Calculate the Gram matrices using batch matrix multiplication
+        gram_matrix_clip_feat = torch.bmm(reshaped_clip_feat, reshaped_clip_feat.transpose(1, 2))
+        gram_matrix_frozen_clip_feat = torch.bmm(reshaped_frozen_clip_feat, reshaped_frozen_clip_feat.transpose(1, 2))
+
+        dist_weight = linear_warmup(self.iter, self.dist_warmup_iters, self.weight_dict["dist_loss"])
+        self.iter += 1
+
+        if self.loss == "l2":
+            return dist_weight * F.mse_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
+        
+        return dist_weight * batched_cosine_similarity_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
+        
+    
+    def calculate_ce_loss(self, masks, clip_feature, text_classifier, num_templates, gt_labels):
+        out_vocab_cls_results, _ = self.out_of_vocab_classification(masks, clip_feature, text_classifier, num_templates)
+        batch_size, num_masks, num_classes = out_vocab_cls_results.shape
+
+        # Reshape out_vocab_cls_results to [batch_size * num_objects, num_classes]
+        out_vocab_cls_results = out_vocab_cls_results.reshape(batch_size * num_masks, num_classes)
+
+        # Reshape gt_labels to [batch_size * num_objects]
+        gt_labels = gt_labels.reshape(batch_size * num_masks)
+        return F.cross_entropy(out_vocab_cls_results, gt_labels, reduction='mean')
+
+    def train_with_generated_masks(self, targets, frozen_features, clip_feature, text_classifier, num_templates, frozen_clip_feature):
+        outputs = self.sem_seg_head(frozen_features)
+        pred_masks = outputs["pred_masks"]
+        outputs['oov_cls_res'], _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
+
+        # FC-CLIP criterion extended with oov_ce loss
+        losses = self.criterion(outputs, targets)
+
+        for k in list(losses.keys()):
+            if k in self.criterion.weight_dict:
+                losses[k] *= self.criterion.weight_dict[k]
+            else:
+                # remove this loss if not specified in `weight_dict`
+                losses.pop(k)
+
+        dist_loss = self.calculate_dist_loss(clip_feature, frozen_clip_feature)
+        losses["dist_loss"] = dist_loss
+
+        wandb.log(losses)
+        return losses
+
+    def train_with_gt_masks(self, targets, clip_feature, text_classifier, num_templates, frozen_clip_feature):
+        ce_loss = 0
+        for i, targets_per_img in enumerate(targets):
+            gt_masks = targets_per_img["masks"]
+            gt_labels = targets_per_img["labels"]
+
+            num_masks = gt_masks.shape[0]
+            if num_masks == 0:
+                continue
+
+            gt_masks = gt_masks.unsqueeze(0).float()
+            ce_loss += self.calculate_ce_loss(gt_masks, clip_feature[i:i+1], text_classifier, num_templates, gt_labels)
+
+        ce_loss = ce_loss / len(targets)
+        dist_loss = self.calculate_dist_loss(clip_feature, frozen_clip_feature)
+
+        losses = {
+            "oov_ce_loss": ce_loss * self.weight_dict["ce_loss"],
+            "dist_loss": dist_loss,
+        }
+        wandb.log(losses)
+        return losses
 
     def forward(self, batched_inputs):
         """
@@ -569,7 +699,8 @@ class MYFCCLIP(nn.Module):
         images = ImageList.from_tensors(images, self.size_divisibility)
 
         self.frozen_backbone.eval()
-        self.sem_seg_head.eval()
+        if not self.train_seg_head:
+            self.sem_seg_head.eval()
 
         features = self.backbone(images.tensor)
         frozen_features = self.frozen_backbone(images.tensor)
@@ -579,6 +710,8 @@ class MYFCCLIP(nn.Module):
         frozen_clip_feature = frozen_features["clip_vis_dense"]
         text_classifier = torch.cat([text_classifier, F.normalize(self.void_embedding.weight, dim=-1)], dim=0)
 
+        frozen_features['text_classifier'] = text_classifier
+        frozen_features['num_templates'] = num_templates
         # mask classification target
         if "instances" in batched_inputs[0]:
             gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
@@ -587,54 +720,13 @@ class MYFCCLIP(nn.Module):
             targets = None
 
         if self.training:
-            ce_loss = 0
-            for i, targets_per_img in enumerate(targets):
-                gt_masks = targets_per_img["masks"]
-                gt_labels = targets_per_img["labels"]
-
-                num_masks = gt_masks.shape[0]
-                if num_masks == 0:
-                    continue
-                
-                gt_masks = gt_masks.unsqueeze(0).float()
-                out_vocab_cls_results = self.out_of_vocab_classification(gt_masks, clip_feature[i:i+1], text_classifier, num_templates)
-                batch_size, num_masks, num_classes = out_vocab_cls_results.shape
-
-                # Reshape out_vocab_cls_results to [batch_size * num_objects, num_classes]
-                out_vocab_cls_results = out_vocab_cls_results.reshape(batch_size * num_masks, num_classes)
-
-                # Reshape gt_labels to [batch_size * num_objects]
-                gt_labels = gt_labels.reshape(batch_size * num_masks)
-                ce_loss += F.cross_entropy(out_vocab_cls_results, gt_labels, reduction='mean')
-            
-            ce_loss = ce_loss / len(targets)
-
-            # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
-            reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
-            reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0],
-                                                                frozen_clip_feature.shape[1], -1)
-
-            # Calculate the Gram matrices using batch matrix multiplication
-            gram_matrix_clip_feat = torch.bmm(reshaped_clip_feat, reshaped_clip_feat.transpose(1, 2))
-            gram_matrix_frozen_clip_feat = torch.bmm(reshaped_frozen_clip_feat, reshaped_frozen_clip_feat.transpose(1, 2))
-
-            if self.loss == "l2":
-                dist_loss = F.mse_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
+            if self.train_with_fc_clip_masks:
+                return  self.train_with_generated_masks(targets, frozen_features, clip_feature,
+                                                    text_classifier, num_templates, frozen_clip_feature)
             else:
-                dist_loss = batched_cosine_similarity_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
+                return self.train_with_gt_masks(targets, clip_feature, text_classifier,
+                                            num_templates, frozen_clip_feature)
 
-
-            dist_weight = linear_warmup(self.iter, self.dist_warmup_iters, self.weight_dict["dist_loss"])
-            self.iter += 1
-
-            losses = {
-                "ce_loss": ce_loss * self.weight_dict["ce_loss"],
-                "dist_loss": dist_loss * dist_weight,
-            }
-
-            wandb.log(losses)
-
-            return losses
         else:
             with torch.no_grad():
                 if self.test_perfect_masks:
@@ -646,8 +738,6 @@ class MYFCCLIP(nn.Module):
                     mask_pred_results = mask_pred_results.float().to(self.device)
                     mask_cls_results = out_vocab_cls_probs
                 else:
-                    frozen_features['text_classifier'] = text_classifier
-                    frozen_features['num_templates'] = num_templates
                     mask_2_former_outputs = self.sem_seg_head(frozen_features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
 
                     mask_pred_results = mask_2_former_outputs["pred_masks"]

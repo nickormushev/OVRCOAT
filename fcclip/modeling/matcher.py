@@ -11,7 +11,7 @@ import torch
 import torch.nn.functional as F
 from scipy.optimize import linear_sum_assignment
 from torch import nn
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 
 from detectron2.projects.point_rend.point_features import point_sample
 
@@ -79,7 +79,7 @@ class HungarianMatcher(nn.Module):
     while the others are un-matched (and thus treated as non-objects).
     """
 
-    def __init__(self, cost_class: float = 1, cost_mask: float = 1, cost_dice: float = 1, num_points: int = 0):
+    def __init__(self, cost_class: float = 1, cost_oov: float = 1, cost_mask: float = 1, cost_dice: float = 1, num_points: int = 0):
         """Creates the matcher
 
         Params:
@@ -88,11 +88,12 @@ class HungarianMatcher(nn.Module):
             cost_dice: This is the relative weight of the dice loss of the binary mask in the matching cost
         """
         super().__init__()
+        self.cost_oov = cost_oov
         self.cost_class = cost_class
         self.cost_mask = cost_mask
         self.cost_dice = cost_dice
 
-        assert cost_class != 0 or cost_mask != 0 or cost_dice != 0, "all costs cant be 0"
+        assert cost_class != 0 or cost_mask != 0 or cost_dice != 0 or cost_oov != 0, "all costs cant be 0"
 
         self.num_points = num_points
 
@@ -113,6 +114,13 @@ class HungarianMatcher(nn.Module):
             # but approximate it in 1 - proba[target class].
             # The 1 is a constant that doesn't change the matching, it can be ommitted.
             cost_class = -out_prob[:, tgt_ids]
+
+            if "oov_cls_res" in outputs:
+                oov_prob = outputs["oov_cls_res"][b]
+                cost_oov = -oov_prob[:, tgt_ids]
+            else:
+                cost_oov = torch.zeros_like(cost_class)
+                self.cost_oov = 0
 
             out_mask = outputs["pred_masks"][b]  # [num_queries, H_pred, W_pred]
             # gt masks are already padded when preparing target
@@ -135,7 +143,7 @@ class HungarianMatcher(nn.Module):
                 align_corners=False,
             ).squeeze(1)
 
-            with autocast(enabled=False):
+            with autocast(enabled=False, device_type="cuda"):
                 out_mask = out_mask.float()
                 tgt_mask = tgt_mask.float()
                 # Compute the focal loss between masks
@@ -148,7 +156,8 @@ class HungarianMatcher(nn.Module):
             C = (
                 self.cost_mask * cost_mask
                 + self.cost_class * cost_class
-                + self.cost_dice * cost_dice
+                + self.cost_dice * cost_dice +
+                self.cost_oov  * cost_oov
             )
             C = C.reshape(num_queries, -1).cpu()
 

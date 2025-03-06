@@ -1,4 +1,5 @@
 import pandas as pd
+from detectron2.config.config import CfgNode as CN
 import sys
 import os
 import cv2
@@ -81,6 +82,10 @@ def setup_cfg(args):
     cfg.TEST.PERFECT_MASKS = False
     cfg.TEST.WITH_VOID = False
     cfg.TEST.WITH_FC_CLIP = False
+    cfg.TRAIN = CN()
+    cfg.TRAIN.SEG_HEAD = False
+    cfg.TRAIN.WITH_FC_CLIP_MASKS = False
+    cfg.TRAIN.LOSSES = ["masks", "labels", "oov_ce"]
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
     add_fcclip_config(cfg)

@@ -140,7 +140,18 @@ class SetCriterion(nn.Module):
         loss_ce = F.cross_entropy(src_logits.transpose(1, 2), target_classes, self.empty_weight)
         losses = {"loss_ce": loss_ce}
         return losses
-    
+
+    def get_oov_ce_loss(self, outputs, targets, indices, num_masks):
+        out_vocab_cls_results = outputs["oov_cls_res"].float()
+
+        idx = self._get_src_permutation_idx(indices)
+        pred_results = out_vocab_cls_results[idx]
+        target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
+
+        loss_ce = F.cross_entropy(pred_results, target_classes_o)
+        losses = {"loss_oov_ce": loss_ce}
+        return losses
+
     def loss_masks(self, outputs, targets, indices, num_masks):
         """Compute the losses related to the masks: the focal loss and the dice loss.
         targets dicts must contain the key "masks" containing a tensor of dim [nb_target_boxes, h, w]
@@ -209,6 +220,7 @@ class SetCriterion(nn.Module):
         loss_map = {
             'labels': self.loss_labels,
             'masks': self.loss_masks,
+            'oov_ce': self.get_oov_ce_loss,
         }
         assert loss in loss_map, f"do you really want to compute {loss} loss?"
         return loss_map[loss](outputs, targets, indices, num_masks)
@@ -244,6 +256,9 @@ class SetCriterion(nn.Module):
             for i, aux_outputs in enumerate(outputs["aux_outputs"]):
                 indices = self.matcher(aux_outputs, targets)
                 for loss in self.losses:
+                    if loss == "oov_ce":
+                        continue
+
                     l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_masks)
                     l_dict = {k + f"_{i}": v for k, v in l_dict.items()}
                     losses.update(l_dict)
