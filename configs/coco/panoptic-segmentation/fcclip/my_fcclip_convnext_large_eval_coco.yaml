@@ -42,6 +42,7 @@ TRAIN:
     #- "labels"
   WITH_FC_CLIP_MASKS: True
   SEG_HEAD: False
+  USE_TUNED_FEATURES_FOR_SEG_HEAD: False
 TEST:
   PERFECT_MASKS: False
   WITH_VOID: False

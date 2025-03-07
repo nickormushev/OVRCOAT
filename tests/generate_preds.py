@@ -86,6 +86,7 @@ def setup_cfg(args):
     cfg.TRAIN.SEG_HEAD = False
     cfg.TRAIN.WITH_FC_CLIP_MASKS = False
     cfg.TRAIN.LOSSES = ["masks", "labels", "oov_ce"]
+    cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD = False
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
     add_fcclip_config(cfg)

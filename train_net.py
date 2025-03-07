@@ -324,6 +324,7 @@ def setup(args):
     cfg.TRAIN.SEG_HEAD = False
     cfg.TRAIN.WITH_FC_CLIP_MASKS = False
     cfg.TRAIN.LOSSES = ["oov_ce"]
+    cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD = False
 
     # for poly lr schedule
     add_deeplab_config(cfg)
@@ -361,12 +362,12 @@ def main(args):
     dump = cfg.dump()
     cfg_dict  = yaml.safe_load(dump)
 
-    if is_main_process():
-        wandb.init(
-            name=args.wandb_name,
-            project="segmentation-clip-detailed-no-norm",
-            config=cfg_dict
-        )
+    #if is_main_process():
+    wandb.init(
+        name=args.wandb_name,
+        project="segmentation-clip-detailed-no-norm",
+        config=cfg_dict
+    )
 
     if args.eval_only:
         model = Trainer.build_model(cfg)

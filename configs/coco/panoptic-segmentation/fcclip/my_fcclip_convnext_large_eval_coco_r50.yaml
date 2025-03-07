@@ -40,7 +40,8 @@ TRAIN:
     - "masks"
     - "labels"
   WITH_FC_CLIP_MASKS: True
-  SEG_HEAD: True
+  SEG_HEAD: True # Requires WITH_FC_CLIP_MASKS
+  USE_TUNED_FEATURES_FOR_SEG_HEAD: True
 TEST:
   PERFECT_MASKS: False
   WITH_VOID: False
@@ -48,6 +49,6 @@ TEST:
   EVAL_PERIOD: 4000
 DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: True
-  NUM_WORKERS: 6
+  NUM_WORKERS: 2
 DATASETS:
   TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)

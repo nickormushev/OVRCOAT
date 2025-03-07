@@ -211,6 +211,7 @@ class MYFCCLIP(nn.Module):
         criterion: nn.Module,
         weight_dict: dict,
         train_with_fc_clip_masks: bool,
+        use_tuned_features_for_seg_head: bool,
         train_seg_head: bool,
         test_perfect_masks: bool,
         test_with_void: bool,
@@ -273,7 +274,8 @@ class MYFCCLIP(nn.Module):
         self.test_with_fc_clip = test_with_fc_clip
         self.iter = 0
         self.sem_seg_head = sem_seg_head
-        self.sem_seg_head.eval()
+        if not train_seg_head:
+            self.sem_seg_head.eval()
         self.loss = loss
         self.pooling_weights = pooling_weights
         self.num_queries = num_queries
@@ -297,6 +299,7 @@ class MYFCCLIP(nn.Module):
 
         self.train_with_fc_clip_masks = train_with_fc_clip_masks
         self.train_seg_head = train_seg_head
+        self.use_tuned_features_for_seg_head = use_tuned_features_for_seg_head
         self.criterion = criterion
 
         if not self.semantic_on:
@@ -498,6 +501,7 @@ class MYFCCLIP(nn.Module):
             "sem_seg_head": sem_seg_head,
             "criterion": criterion,
             "train_with_fc_clip_masks": cfg.TRAIN.WITH_FC_CLIP_MASKS,
+            "use_tuned_features_for_seg_head": cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD,
             "train_seg_head": cfg.TRAIN.SEG_HEAD,
             "test_with_void": cfg.TEST.WITH_VOID,
             "test_with_fc_clip": cfg.TEST.WITH_FC_CLIP,
@@ -623,8 +627,8 @@ class MYFCCLIP(nn.Module):
         gt_labels = gt_labels.reshape(batch_size * num_masks)
         return F.cross_entropy(out_vocab_cls_results, gt_labels, reduction='mean')
 
-    def train_with_generated_masks(self, targets, frozen_features, clip_feature, text_classifier, num_templates, frozen_clip_feature):
-        outputs = self.sem_seg_head(frozen_features)
+    def train_with_generated_masks(self, targets, seg_head_features, clip_feature, text_classifier, num_templates, frozen_clip_feature):
+        outputs = self.sem_seg_head(seg_head_features)
         pred_masks = outputs["pred_masks"]
         outputs['oov_cls_res'], _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
 
@@ -703,15 +707,21 @@ class MYFCCLIP(nn.Module):
             self.sem_seg_head.eval()
 
         features = self.backbone(images.tensor)
-        frozen_features = self.frozen_backbone(images.tensor)
+        frozen_clip_features = self.frozen_backbone(images.tensor)
         text_classifier, num_templates = self.get_text_classifier()
 
+        frozen_clip_feature = frozen_clip_features["clip_vis_dense"]
+
+        seg_head_features = frozen_clip_features
+        if self.train_seg_head and self.use_tuned_features_for_seg_head:
+            seg_head_features = features
+
+        seg_head_features['text_classifier'] = text_classifier
+        seg_head_features['num_templates'] = num_templates
+
         clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
-        frozen_clip_feature = frozen_features["clip_vis_dense"]
         text_classifier = torch.cat([text_classifier, F.normalize(self.void_embedding.weight, dim=-1)], dim=0)
 
-        frozen_features['text_classifier'] = text_classifier
-        frozen_features['num_templates'] = num_templates
         # mask classification target
         if "instances" in batched_inputs[0]:
             gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
@@ -721,7 +731,7 @@ class MYFCCLIP(nn.Module):
 
         if self.training:
             if self.train_with_fc_clip_masks:
-                return  self.train_with_generated_masks(targets, frozen_features, clip_feature,
+                return  self.train_with_generated_masks(targets, seg_head_features, clip_feature,
                                                     text_classifier, num_templates, frozen_clip_feature)
             else:
                 return self.train_with_gt_masks(targets, clip_feature, text_classifier,
@@ -733,12 +743,12 @@ class MYFCCLIP(nn.Module):
                     # We ensemble the pred logits of in-vocab and out-vocab
                     mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
-                    out_vocab_cls_probs, _ = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
+                    out_vocab_cls_probs, _ = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates, interpolate_mode="nearest-exact")
 
                     mask_pred_results = mask_pred_results.float().to(self.device)
                     mask_cls_results = out_vocab_cls_probs
                 else:
-                    mask_2_former_outputs = self.sem_seg_head(frozen_features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
+                    mask_2_former_outputs = self.sem_seg_head(seg_head_features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
 
                     mask_pred_results = mask_2_former_outputs["pred_masks"]
                     mask_cls_results, mask_for_pooling = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
@@ -887,9 +897,6 @@ class MYFCCLIP(nn.Module):
         image_size = mask_pred.shape[-2:]
 
         # [Q, K]
-        #if not PERFECT_MASKS:
-        #    scores = F.softmax(mask_cls, dim=-1)
-        #else:
         scores = mask_cls.to(self.device)
 
         if self.test_with_void or self.test_with_fc_clip:
