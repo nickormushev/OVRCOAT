@@ -213,6 +213,7 @@ class MYFCCLIP(nn.Module):
         train_with_fc_clip_masks: bool,
         use_tuned_features_for_seg_head: bool,
         train_seg_head: bool,
+        detach_seg_head: bool,
         test_perfect_masks: bool,
         test_with_void: bool,
         test_with_fc_clip: bool,
@@ -299,6 +300,7 @@ class MYFCCLIP(nn.Module):
 
         self.train_with_fc_clip_masks = train_with_fc_clip_masks
         self.train_seg_head = train_seg_head
+        self.detach_seg_head = detach_seg_head
         self.use_tuned_features_for_seg_head = use_tuned_features_for_seg_head
         self.criterion = criterion
 
@@ -501,8 +503,9 @@ class MYFCCLIP(nn.Module):
             "sem_seg_head": sem_seg_head,
             "criterion": criterion,
             "train_with_fc_clip_masks": cfg.TRAIN.WITH_FC_CLIP_MASKS,
-            "use_tuned_features_for_seg_head": cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD,
             "train_seg_head": cfg.TRAIN.SEG_HEAD,
+            "use_tuned_features_for_seg_head": cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD,
+            "detach_seg_head": cfg.TRAIN.DETACH_SEG_HEAD,
             "test_with_void": cfg.TEST.WITH_VOID,
             "test_with_fc_clip": cfg.TEST.WITH_FC_CLIP,
             "test_perfect_masks": cfg.TEST.PERFECT_MASKS,
@@ -715,6 +718,9 @@ class MYFCCLIP(nn.Module):
         seg_head_features = frozen_clip_features
         if self.train_seg_head and self.use_tuned_features_for_seg_head:
             seg_head_features = features
+        
+        if self.detach_seg_head:
+            seg_head_features = {k: v.detach() for k, v in seg_head_features.items()}
 
         seg_head_features['text_classifier'] = text_classifier
         seg_head_features['num_templates'] = num_templates

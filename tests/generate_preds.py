@@ -79,14 +79,18 @@ def setup_cfg(args):
     # load config from file and command-line arguments
     cfg = get_cfg()
     cfg.MODEL.BACKBONE.FREEZE = True
+
     cfg.TEST.PERFECT_MASKS = False
     cfg.TEST.WITH_VOID = False
     cfg.TEST.WITH_FC_CLIP = False
+
     cfg.TRAIN = CN()
     cfg.TRAIN.SEG_HEAD = False
     cfg.TRAIN.WITH_FC_CLIP_MASKS = False
     cfg.TRAIN.LOSSES = ["masks", "labels", "oov_ce"]
     cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD = False
+    cfg.TRAIN.DETACH_SEG_HEAD = False
+
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
     add_fcclip_config(cfg)
@@ -94,7 +98,6 @@ def setup_cfg(args):
     cfg.merge_from_list(args.opts)
     cfg.freeze()
     return cfg
-
 
 def get_parser():
     parser = argparse.ArgumentParser(description="fcclip demo for builtin configs")
