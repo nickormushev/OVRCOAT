@@ -325,6 +325,7 @@ def setup(args):
     cfg.TRAIN.WITH_FC_CLIP_MASKS = False
     cfg.TRAIN.LOSSES = ["oov_ce"]
     cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD = False
+    cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS = True
     cfg.TRAIN.DETACH_SEG_HEAD = False
 
     # for poly lr schedule

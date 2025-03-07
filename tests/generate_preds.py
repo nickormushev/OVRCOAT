@@ -84,12 +84,14 @@ def setup_cfg(args):
     cfg.TEST.WITH_VOID = False
     cfg.TEST.WITH_FC_CLIP = False
 
+    # TRAIN options are not used with generate preds but required to build model
     cfg.TRAIN = CN()
     cfg.TRAIN.SEG_HEAD = False
     cfg.TRAIN.WITH_FC_CLIP_MASKS = False
     cfg.TRAIN.LOSSES = ["masks", "labels", "oov_ce"]
     cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD = False
     cfg.TRAIN.DETACH_SEG_HEAD = False
+    cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS = True
 
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)

@@ -477,7 +477,10 @@ class MYFCCLIP(nn.Module):
         cfg.MODEL.BACKBONE.FREEZE = True
         frozen_backbone = build_backbone(cfg)
         cfg.MODEL.BACKBONE.FREEZE = False
-        sem_seg_head = MYFCCLIP.get_sem_seg_head(cfg)
+        if cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS:
+            sem_seg_head = MYFCCLIP.get_sem_seg_head(cfg)
+        else:
+            sem_seg_head = build_sem_seg_head(cfg, backbone.output_shape())
         cfg.freeze()
 
         dist_weight = cfg.MODEL.FC_CLIP.DIST_WEIGHT

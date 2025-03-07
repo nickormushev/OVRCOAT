@@ -35,14 +35,15 @@ SOLVER:
   AMP:
     ENABLED: False
 TRAIN:
-  LOSSES:
+  LOSSES: # Works only with WITH_FC_CLIP_MASKS: True . For GT masks we always use oov ce and the clip comparison loss
     - "oov_ce"
     - "masks"
     - "labels"
-  WITH_FC_CLIP_MASKS: True
-  SEG_HEAD: True # Requires WITH_FC_CLIP_MASKS
-  USE_TUNED_FEATURES_FOR_SEG_HEAD: True
-  DETACH_SEG_HEAD: False
+  WITH_FC_CLIP_MASKS: True # Use FC-Clip masks during training instead of gt ones
+  SEG_HEAD: True # Requires WITH_FC_CLIP_MASKS. Enables tuning of seg head
+  USE_TUNED_FEATURES_FOR_SEG_HEAD: True # Passes the tuned clip features to the segmentation head instead of the frozen ones
+  USE_PRETRAINED_SEG_HEAD_WEIGHTS: True # Load FC-Clip weights for the segmentation head at init
+  DETACH_SEG_HEAD: False # Detach the segmentation head from the Clip backbone
 TEST:
   PERFECT_MASKS: False
   WITH_VOID: False
