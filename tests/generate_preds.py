@@ -79,6 +79,11 @@ def setup_cfg(args):
     # load config from file and command-line arguments
     cfg = get_cfg()
     cfg.MODEL.BACKBONE.FREEZE = True
+    cfg.MODEL.BACKBONE.PROMPT = CN()
+    cfg.MODEL.BACKBONE.PROMPT.LEARNABLE = False
+    cfg.MODEL.BACKBONE.PROMPT.DIM = 512
+    cfg.MODEL.BACKBONE.PROMPT.SHAPE = (16, 0)
+    cfg.MODEL.BACKBONE.PROMPT.CHECKPOINT = ""
 
     cfg.TEST.PERFECT_MASKS = False
     cfg.TEST.WITH_VOID = False

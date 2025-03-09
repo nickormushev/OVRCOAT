@@ -5,6 +5,10 @@ MODEL:
   BACKBONE:
     NAME: "CLIP"
     FREEZE: False
+    PROMPT:
+      LEARNABLE: False
+      DIM: 512
+      SHAPE: (16, 0)
   FC_CLIP:
     CLIP_MODEL_NAME: "RN50"
     CLIP_PRETRAINED_WEIGHTS: "openai"
@@ -43,7 +47,7 @@ TRAIN:
   SEG_HEAD: True # Requires WITH_FC_CLIP_MASKS. Enables tuning of seg head
   USE_TUNED_FEATURES_FOR_SEG_HEAD: True # Passes the tuned clip features to the segmentation head instead of the frozen ones
   USE_PRETRAINED_SEG_HEAD_WEIGHTS: True # Load FC-Clip weights for the segmentation head at init
-  DETACH_SEG_HEAD: False # Detach the segmentation head from the Clip backbone
+  DETACH_SEG_HEAD: True # Detach the segmentation head from the Clip backbone
 TEST:
   PERFECT_MASKS: False
   WITH_VOID: False

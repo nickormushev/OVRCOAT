@@ -316,6 +316,12 @@ def setup(args):
     """
     cfg = get_cfg()
     cfg.MODEL.BACKBONE.FREEZE = True
+    cfg.MODEL.BACKBONE.PROMPT = CN()
+    cfg.MODEL.BACKBONE.PROMPT.LEARNABLE = False
+    cfg.MODEL.BACKBONE.PROMPT.DIM = 512
+    cfg.MODEL.BACKBONE.PROMPT.SHAPE = (16, 0)
+    cfg.MODEL.BACKBONE.PROMPT.CHECKPOINT = ""
+
     cfg.TEST.PERFECT_MASKS = False
     cfg.TEST.WITH_VOID = False
     cfg.TEST.WITH_FC_CLIP = False
@@ -327,6 +333,7 @@ def setup(args):
     cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD = False
     cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS = True
     cfg.TRAIN.DETACH_SEG_HEAD = False
+
 
     # for poly lr schedule
     add_deeplab_config(cfg)

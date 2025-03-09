@@ -19,6 +19,7 @@ import torch.nn.functional as F
 import math
 from detectron2.utils import comm
 
+from fcclip.modeling.prompt_learner import build_prompt_learner
 import open_clip
 
 from detectron2.modeling import BACKBONE_REGISTRY, Backbone, ShapeSpec
@@ -39,6 +40,11 @@ class CLIP(Backbone):
 
         self.clip_model, _, _ = open_clip.create_model_and_transforms(model_name, pretrained=pretrained)
         self.text_tokenizer = open_clip.get_tokenizer(model_name)
+
+        self.prompt_learner = None
+        if cfg.MODEL.BACKBONE.PROMPT.LEARNABLE:
+            self.prompt_learner = build_prompt_learner(cfg.MODEL.BACKBONE)
+            self.prompt_learner.init_buffer(self.clip_model, self.text_tokenizer)
 
         model_name = model_name.lower()
         if 'convnext_' in model_name:
@@ -82,24 +88,40 @@ class CLIP(Backbone):
             self.eval()
             self.freeze_everything()
         else:
+            self.freeze_text_encoder()
             self.train()
+
+    def freeze_text_encoder(self):
+        for param in self.clip_model.transformer.parameters():
+            param.requires_grad = False
+
+        for param in self.clip_model.token_embedding.parameters():
+            param.requires_grad = False
+
+        # Freeze the layer normalization final layer
+        for param in self.clip_model.ln_final.parameters():
+            param.requires_grad = False
+
+        # Freeze the text projection layer
+        self.clip_model.text_projection.requires_grad = False
+        
+        # Freeze the positional embeddings
+        self.clip_model.positional_embedding.requires_grad = False
 
     def freeze_everything(self):
         for param in self.clip_model.parameters():
             param.requires_grad = False
 
-    def encode_text(self, text, normalize: bool = False):
+    def encode_text(self, x, indices, normalize: bool = False):
         cast_dtype = self.clip_model.transformer.get_cast_dtype()
-
-        x = self.clip_model.token_embedding(text).to(cast_dtype)  # [batch_size, n_ctx, d_model]
-
+        x = x.to(cast_dtype)
         x = x + self.clip_model.positional_embedding.to(cast_dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.clip_model.transformer(x, attn_mask=self.clip_model.attn_mask)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.clip_model.ln_final(x)  # [batch_size, n_ctx, transformer.width]
         # take features from the eot embedding (eot_token is the highest number in each sequence)
-        x = x[torch.arange(x.shape[0]), text.argmax(dim=-1)] @ self.clip_model.text_projection
+        x = x[torch.arange(x.shape[0]), indices] @ self.clip_model.text_projection
         return F.normalize(x, dim=-1) if normalize else x
 
     def tokenize_text(self, text):
@@ -205,17 +227,26 @@ class CLIP(Backbone):
         return x
 
     def get_text_classifier(self, text_list, device):
-        self.eval()
-        with torch.no_grad():
-            # reference for templates: https://github.com/mlfoundations/open_clip/blob/91f6cce16b7bee90b3b5d38ca305b5b3b67cc200/src/training/imagenet_zeroshot_data.py
-            text_tokens = self.tokenize_text(text_list)
-            text_tokens = text_tokens.to(device)
-            # we return un-normalized text feature.
-            text_features = self.encode_text(text_tokens, normalize=False)
-            return text_features
+        if self.prompt_learner is not None:
+            embeddings, indices = self.prompt_learner(text_list, self.clip_model, self.text_tokenizer)
+            text_features = self.encode_text(embeddings, indices, normalize=False)
+        else:
+            self.eval()
+            with torch.no_grad():
+                # reference for templates: https://github.com/mlfoundations/open_clip/blob/91f6cce16b7bee90b3b5d38ca305b5b3b67cc200/src/training/imagenet_zeroshot_data.py
+                text_tokens = self.tokenize_text(text_list)
+                text_tokens = text_tokens.to(device)
+                # we return un-normalized text feature.
+                indices = text_tokens.argmax(dim=-1)
+                embeddings = self.clip_model.token_embedding(text_tokens)
+                text_features = self.encode_text(embeddings, indices, normalize=False)
+            self.train()
+
+        return text_features
 
     def forward(self, x):
         if self.training:
+            self.train()
             return self.extract_features(x)
         else:
             self.eval()
