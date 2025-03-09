@@ -101,84 +101,6 @@ def calculate_mask_properties(mask):
     
     return eccentricity, compactness, perimeter_to_area_ratio, area
 
-class MissclassificationInfo:
-    def __init__(self):
-        self.seen_missclassified_as_void_count = 0
-        self.seen_missclassified_as_seen_class_count = 0
-        self.seen_missclassified_as_unseen_class_count = 0
-    
-        self.unseen_missclassified_as_void_count = 0
-        self.unseen_missclassified_as_seen_class_count = 0
-        self.unseen_missclassified_as_unseen_class_count = 0
-
-        self.void_clip_class = []
-        self.void_gt_class = []
-
-    def add(self, predicted_class, seen_classes, gt_class, num_classes):
-        is_seen = seen_classes[gt_class]
-        is_void = predicted_class == num_classes - 1
-
-        is_pred_seen = seen_classes[predicted_class] if not is_void else False
-
-        if is_seen:
-            if is_void:
-                self.seen_missclassified_as_void_count += 1
-            elif is_pred_seen:
-                self.seen_missclassified_as_seen_class_count += 1
-            else:
-                self.seen_missclassified_as_unseen_class_count += 1
-        else:
-            if is_void:
-                self.unseen_missclassified_as_void_count += 1
-            elif is_pred_seen:
-                self.unseen_missclassified_as_seen_class_count += 1
-            else:
-                self.unseen_missclassified_as_unseen_class_count += 1
-
-    def save_confusion_matrix(self, filename):
-        with open(filename, 'w') as f:
-            f.write("Confusion Matrix:\n")
-            f.write("            | Predicted Void | Predicted Seen | Predicted Unseen\n")
-            f.write("-----------------------------------------------------------------------\n")
-            f.write(f"Seen       | {self.seen_missclassified_as_void_count:>15} | {self.seen_missclassified_as_seen_class_count:>14} | {self.seen_missclassified_as_unseen_class_count:>15}\n")
-            f.write(f"Unseen     | {self.unseen_missclassified_as_void_count:>15} | {self.unseen_missclassified_as_seen_class_count:>14} | {self.unseen_missclassified_as_unseen_class_count:>15}\n")
-
-    def print_confusion_matrix(self):
-        print("Confusion Matrix:")
-        print("            | Predicted Void | Predicted Seen | Predicted Unseen")
-        print("-----------------------------------------------------------------------")
-        print(f"Seen       | {self.seen_missclassified_as_void_count:>15} | {self.seen_missclassified_as_seen_class_count:>14} | {self.seen_missclassified_as_unseen_class_count:>15}")
-        print(f"Unseen     | {self.unseen_missclassified_as_void_count:>15} | {self.unseen_missclassified_as_seen_class_count:>14} | {self.unseen_missclassified_as_unseen_class_count:>15}")
-    
-    def print_void_clip_metrics(self, file = "./tests/void_classification.csv"):
-        # Save predictions to file for easy reproduction of results
-        void_clip_labels = [ADE20K_150_CATEGORIES[category]['name'].split(',')[0] for category in self.void_clip_class]
-        void_gt_labels = [ADE20K_150_CATEGORIES[category]['name'].split(',')[0] for category in self.void_gt_class]
-        df = pd.DataFrame(list(zip(void_clip_labels, void_gt_labels)), columns=['clip', 'gt'])
-        df.to_csv(file)
-
-        print("Void classification metrics:")
-        print(f"Accuracy: {accuracy_score(self.void_gt_class, self.void_clip_class)}")
-        print(f"Precision: {precision_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
-        print(f"Recall: {recall_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
-        print(f"F1: {f1_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
-
-class CategoryInfo:
-    def __init__(self, total = 0, miss_count = 0, detected = 0):
-        self.total = total
-        self.miss_count = miss_count
-        self.detected = detected
-
-    def __str__(self):
-        return f'{self.name}: {self.total} - {self.miss_count}'
-
-    def __repr__(self):
-        return str(self)
-
-CATEGORIES_INFO = defaultdict(CategoryInfo)
-MISSCLASSIFICATION_INFO = MissclassificationInfo()
-MISSCLASSIFICATION_INFO_BEST_MASKS = MissclassificationInfo()
-
 def batched_cosine_similarity_loss(A, B):
     A_normalized = F.normalize(A, p=2, dim=2) 
     B_normalized = F.normalize(B, p=2, dim=2)
@@ -360,7 +282,6 @@ class MYFCCLIP(nn.Module):
             templated_class_names += templated_classes
             num_templates.append(templated_classes_num) # how many templates for current classes
         class_names = templated_class_names
-        #print("text for classification:", class_names)
         return category_overlapping_mask, num_templates, class_names
 
     def set_metadata(self, metadata):
@@ -451,11 +372,10 @@ class MYFCCLIP(nn.Module):
 
     @classmethod
     def get_sem_seg_head(cls, cfg):
-        cfg.MODEL.WEIGHTS = cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS
         cfg.MODEL.META_ARCHITECTURE = "FCCLIP"
         model = build_model(cfg)
         checkpointer = DetectionCheckpointer(model)
-        checkpointer.load(cfg.MODEL.WEIGHTS)
+        checkpointer.load(cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
         sem_seg_head = model.sem_seg_head
 
         if not cfg.TRAIN.SEG_HEAD:
@@ -464,7 +384,6 @@ class MYFCCLIP(nn.Module):
                 param.requires_grad = False
 
         del model
-        cfg.MODEL.WEIGHTS = ""
         cfg.MODEL.META_ARCHITECTURE = "MYFCCLIP"
 
         return sem_seg_head
@@ -723,7 +642,7 @@ class MYFCCLIP(nn.Module):
             seg_head_features = features
         
         if self.detach_seg_head:
-            seg_head_features = {k: v.detach() for k, v in seg_head_features.items()}
+            seg_head_features['stem'] = seg_head_features['stem'].detach()
 
         seg_head_features['text_classifier'] = text_classifier
         seg_head_features['num_templates'] = num_templates
@@ -740,7 +659,7 @@ class MYFCCLIP(nn.Module):
 
         if self.training:
             if self.train_with_fc_clip_masks:
-                return  self.train_with_generated_masks(targets, seg_head_features, clip_feature,
+                return self.train_with_generated_masks(targets, seg_head_features, clip_feature,
                                                     text_classifier, num_templates, frozen_clip_feature)
             else:
                 return self.train_with_gt_masks(targets, clip_feature, text_classifier,
