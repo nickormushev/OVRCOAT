@@ -142,7 +142,6 @@ class MYFCCLIP(nn.Module):
         test_with_fc_clip: bool,
         dist_warmup_iters: int,
         loss: str,
-        pooling_weights: nn.Parameter,
         use_pooling_weights: bool,
         num_queries: int,
         object_mask_threshold: float,
@@ -201,7 +200,6 @@ class MYFCCLIP(nn.Module):
         if not train_seg_head:
             self.sem_seg_head.eval()
         self.loss = loss
-        self.pooling_weights = pooling_weights
         self.num_queries = num_queries
         self.overlap_threshold = overlap_threshold
         self.object_mask_threshold = object_mask_threshold
@@ -215,8 +213,6 @@ class MYFCCLIP(nn.Module):
         self.register_buffer("pixel_mean", torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer("pixel_std", torch.Tensor(pixel_std).view(-1, 1, 1), False)
 
-        self.void_embedding = void_embedding
-        self.init_embedding = False
 
         # additional args
         self.semantic_on = semantic_on
@@ -241,7 +237,9 @@ class MYFCCLIP(nn.Module):
 
         self.train_text_classifier = None
         self.test_text_classifier = None
-        self.void_embedding = nn.Embedding(1, backbone.dim_latent) # use this for void
+
+        self.init_embedding = False
+        self.void_embedding = void_embedding
 
         self.use_pooling_weights = use_pooling_weights
 
@@ -442,7 +440,6 @@ class MYFCCLIP(nn.Module):
             "dist_warmup_iters": cfg.MODEL.FC_CLIP.DIST_WARMUP_ITERS,
             "loss": cfg.MODEL.FC_CLIP.LOSS,
             "use_pooling_weights": cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS,
-            "pooling_weights": pool_weights,
             "num_queries": cfg.MODEL.MASK_FORMER.NUM_OBJECT_QUERIES,
             "object_mask_threshold": cfg.MODEL.MASK_FORMER.TEST.OBJECT_MASK_THRESHOLD,
             "overlap_threshold": cfg.MODEL.MASK_FORMER.TEST.OVERLAP_THRESHOLD,
@@ -522,9 +519,6 @@ class MYFCCLIP(nn.Module):
         else:
             raise NotImplementedError
 
-        if self.use_pooling_weights:
-            pooled_clip_feature = torch.bmm(pooled_clip_feature, self.pooling_weights.unsqueeze(0).expand(pooled_clip_feature.shape[0], -1, -1))
-
         out_vocab_cls_results = get_classification_logits(pooled_clip_feature, text_classifier,
                                                         self.backbone.clip_model.logit_scale, num_templates)
         out_vocab_cls_results = out_vocab_cls_results[..., :-1]
@@ -577,8 +571,14 @@ class MYFCCLIP(nn.Module):
         return F.cross_entropy(out_vocab_cls_results, gt_labels, reduction='mean')
 
     def train_with_generated_masks(self, targets, seg_head_features, clip_feature, text_classifier, num_templates, frozen_clip_feature):
+        if self.detach_seg_head:
+            seg_head_features = {k: v.detach() for k, v in seg_head_features.items()}
+
         outputs = self.sem_seg_head(seg_head_features)
         pred_masks = outputs["pred_masks"]
+        if self.detach_seg_head:
+            pred_masks = pred_masks.detach()
+
         outputs['oov_cls_res'], _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
 
         # FC-CLIP criterion extended with oov_ce loss
@@ -671,9 +671,6 @@ class MYFCCLIP(nn.Module):
         if self.train_seg_head and self.use_tuned_features_for_seg_head:
             seg_head_features = features
         
-        if self.detach_seg_head:
-            seg_head_features['stem'] = seg_head_features['stem'].detach()
-
         clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
         frozen_clip_feature = frozen_features["clip_vis_dense"]
 
@@ -786,7 +783,6 @@ class MYFCCLIP(nn.Module):
 
     def semantic_inference(self, mask_cls, mask_pred):
         if not self.test_perfect_masks:
-            #mask_cls = F.softmax(mask_cls, dim=-1)
             if self.test_with_void or self.test_with_fc_clip:
                 mask_cls = mask_cls[:, :-1]
             mask_pred = mask_pred.sigmoid()
