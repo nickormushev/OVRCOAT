@@ -130,6 +130,7 @@ class MYFCCLIP(nn.Module):
         backbone: Backbone,
         frozen_backbone: Backbone,
         sem_seg_head: nn.Module,
+        void_embedding: nn.Embedding,
         criterion: nn.Module,
         weight_dict: dict,
         train_with_fc_clip_masks: bool,
@@ -213,6 +214,9 @@ class MYFCCLIP(nn.Module):
         self.sem_seg_postprocess_before_inference = sem_seg_postprocess_before_inference
         self.register_buffer("pixel_mean", torch.Tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer("pixel_std", torch.Tensor(pixel_std).view(-1, 1, 1), False)
+
+        self.void_embedding = void_embedding
+        self.init_embedding = False
 
         # additional args
         self.semantic_on = semantic_on
@@ -373,10 +377,12 @@ class MYFCCLIP(nn.Module):
     @classmethod
     def get_sem_seg_head(cls, cfg):
         cfg.MODEL.META_ARCHITECTURE = "FCCLIP"
+        cls.cfg = cfg
         model = build_model(cfg)
         checkpointer = DetectionCheckpointer(model)
         checkpointer.load(cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
         sem_seg_head = model.sem_seg_head
+        void_embedding = model.void_embedding
 
         if not cfg.TRAIN.SEG_HEAD:
             # Freeze all parameters of sem_seg_head
@@ -386,7 +392,7 @@ class MYFCCLIP(nn.Module):
         del model
         cfg.MODEL.META_ARCHITECTURE = "MYFCCLIP"
 
-        return sem_seg_head
+        return sem_seg_head, void_embedding
     @classmethod 
     def from_config(cls, cfg): # Called by configurable wrapper before init to get arguments which it passes to init
         # This is the frozen CLIP backbone
@@ -397,9 +403,10 @@ class MYFCCLIP(nn.Module):
         frozen_backbone = build_backbone(cfg)
         cfg.MODEL.BACKBONE.FREEZE = False
         if cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS:
-            sem_seg_head = MYFCCLIP.get_sem_seg_head(cfg)
+            sem_seg_head, void_embedding = MYFCCLIP.get_sem_seg_head(cfg)
         else:
             sem_seg_head = build_sem_seg_head(cfg, backbone.output_shape())
+            void_embedding = nn.Embedding(1, backbone.dim_latent)
         cfg.freeze()
 
         dist_weight = cfg.MODEL.FC_CLIP.DIST_WEIGHT
@@ -422,6 +429,7 @@ class MYFCCLIP(nn.Module):
             "backbone": backbone,
             "weight_dict": weight_dict,
             "frozen_backbone": frozen_backbone,
+            "void_embedding": void_embedding,
             "sem_seg_head": sem_seg_head,
             "criterion": criterion,
             "train_with_fc_clip_masks": cfg.TRAIN.WITH_FC_CLIP_MASKS,
@@ -502,6 +510,8 @@ class MYFCCLIP(nn.Module):
         return mask_cls_results
 
     def out_of_vocab_classification(self, masks, clip_features, text_classifier, num_templates, interpolate_mode="bilinear"):
+
+
         mask_for_pooling = F.interpolate(masks, size=clip_features.shape[-2:], mode=interpolate_mode, align_corners=False)
 
         if "convnext" in self.backbone.model_name.lower():
@@ -522,6 +532,12 @@ class MYFCCLIP(nn.Module):
 
         return out_vocab_cls_results, mask_for_pooling
     
+    def get_pooled_features(self, clip_features):
+        pooled_features = []
+        for K in range(1,3):
+           pooled_features.append(F.avg_pool2d(clip_features, kernel_size=(K, K)))
+        return torch.cat(pooled_features, dim=0)
+    
     def calculate_dist_loss(self, clip_feature, frozen_clip_feature):
         # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
         reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
@@ -537,6 +553,14 @@ class MYFCCLIP(nn.Module):
 
         if self.loss == "l2":
             return dist_weight * F.mse_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
+        
+        if self.loss == "smoothl1":
+            return dist_weight * F.smooth_l1_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
+        
+        if self.loss == "maft":
+            pooled_clip_feature = self.get_pooled_features(clip_feature)
+            pooled_frozen_clip_feature = self.get_pooled_features(frozen_clip_feature)
+            return dist_weight * F.smooth_l1_loss(pooled_clip_feature, pooled_frozen_clip_feature)
         
         return dist_weight * batched_cosine_similarity_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
         
@@ -627,28 +651,37 @@ class MYFCCLIP(nn.Module):
         # ImageList stores images in varying shapes by padding them to same size
         images = ImageList.from_tensors(images, self.size_divisibility)
 
+        if not self.init_embedding:
+            model = build_model(self.cfg)
+            checkpointer = DetectionCheckpointer(model)
+            checkpointer.load(self.cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
+            self.void_embedding = model.void_embedding
+            self.init_embedding = True
+
+
         self.frozen_backbone.eval()
         if not self.train_seg_head:
             self.sem_seg_head.eval()
 
         features = self.backbone(images.tensor)
-        frozen_clip_features = self.frozen_backbone(images.tensor)
-        text_classifier, num_templates = self.get_text_classifier()
+        with torch.no_grad():
+            frozen_features = self.frozen_backbone(images.tensor)
+            seg_head_features = frozen_features
 
-        frozen_clip_feature = frozen_clip_features["clip_vis_dense"]
-
-        seg_head_features = frozen_clip_features
         if self.train_seg_head and self.use_tuned_features_for_seg_head:
             seg_head_features = features
         
         if self.detach_seg_head:
             seg_head_features['stem'] = seg_head_features['stem'].detach()
 
+        clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
+        frozen_clip_feature = frozen_features["clip_vis_dense"]
+
+        text_classifier, num_templates = self.get_text_classifier()
+        text_classifier = torch.cat([text_classifier, F.normalize(self.void_embedding.weight, dim=-1)], dim=0)
+
         seg_head_features['text_classifier'] = text_classifier
         seg_head_features['num_templates'] = num_templates
-
-        clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
-        text_classifier = torch.cat([text_classifier, F.normalize(self.void_embedding.weight, dim=-1)], dim=0)
 
         # mask classification target
         if "instances" in batched_inputs[0]:
@@ -754,6 +787,8 @@ class MYFCCLIP(nn.Module):
     def semantic_inference(self, mask_cls, mask_pred):
         if not self.test_perfect_masks:
             #mask_cls = F.softmax(mask_cls, dim=-1)
+            if self.test_with_void or self.test_with_fc_clip:
+                mask_cls = mask_cls[:, :-1]
             mask_pred = mask_pred.sigmoid()
 
         semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
