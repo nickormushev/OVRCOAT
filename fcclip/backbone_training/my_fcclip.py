@@ -386,6 +386,7 @@ class MYFCCLIP(nn.Module):
             # Freeze all parameters of sem_seg_head
             for param in sem_seg_head.parameters():
                 param.requires_grad = False
+            void_embedding.requires_grad = False
 
         del model
         cfg.MODEL.META_ARCHITECTURE = "MYFCCLIP"
