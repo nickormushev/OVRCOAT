@@ -299,7 +299,7 @@ class MYFCCLIP(nn.Module):
                 # this is needed to avoid oom, which may happen when num of class is large
                 bs = 128
                 for idx in range(0, len(self.train_class_names), bs):
-                    text_classifier.append(self.frozen_backbone.get_text_classifier(self.train_class_names[idx:idx+bs], self.device).detach())
+                    text_classifier.append(self.backbone.get_text_classifier(self.train_class_names[idx:idx+bs], self.device).detach())
                 text_classifier = torch.cat(text_classifier, dim=0)
 
                 # average across templates and normalization.
@@ -315,7 +315,7 @@ class MYFCCLIP(nn.Module):
                 bs = 128
                 for idx in range(0, len(self.test_class_names), bs):
                     # For each class generates embeddings for each template with the text encoder
-                    text_classifier.append(self.frozen_backbone.get_text_classifier(self.test_class_names[idx:idx+bs], self.device).detach())
+                    text_classifier.append(self.backbone.get_text_classifier(self.test_class_names[idx:idx+bs], self.device).detach())
                 # The generated  embedings are concatenated
                 text_classifier = torch.cat(text_classifier, dim=0)
 
