@@ -231,6 +231,7 @@ class CLIP(Backbone):
             embeddings, indices = self.prompt_learner(text_list, self.clip_model, self.text_tokenizer)
             text_features = self.encode_text(embeddings, indices, normalize=False)
         else:
+            was_training = self.training
             self.eval()
             with torch.no_grad():
                 # reference for templates: https://github.com/mlfoundations/open_clip/blob/91f6cce16b7bee90b3b5d38ca305b5b3b67cc200/src/training/imagenet_zeroshot_data.py
@@ -240,7 +241,9 @@ class CLIP(Backbone):
                 indices = text_tokens.argmax(dim=-1)
                 embeddings = self.clip_model.token_embedding(text_tokens)
                 text_features = self.encode_text(embeddings, indices, normalize=False)
-            self.train()
+
+            if was_training:
+                self.train()
 
         return text_features
 
