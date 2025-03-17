@@ -115,12 +115,12 @@ class HungarianMatcher(nn.Module):
             # The 1 is a constant that doesn't change the matching, it can be ommitted.
             cost_class = -out_prob[:, tgt_ids]
 
-            if "oov_cls_res" in outputs:
-                oov_prob = outputs["oov_cls_res"][b]
-                cost_oov = -oov_prob[:, tgt_ids]
-            else:
-                cost_oov = torch.zeros_like(cost_class)
-                self.cost_oov = 0
+            #if "oov_cls_res" in outputs:
+            #    oov_prob = outputs["oov_cls_res"][b]
+            #    cost_oov = -oov_prob[:, tgt_ids]
+            #else:
+            #    cost_oov = torch.zeros_like(cost_class)
+            #    self.cost_oov = 0
 
             out_mask = outputs["pred_masks"][b]  # [num_queries, H_pred, W_pred]
             # gt masks are already padded when preparing target
@@ -156,8 +156,8 @@ class HungarianMatcher(nn.Module):
             C = (
                 self.cost_mask * cost_mask
                 + self.cost_class * cost_class
-                + self.cost_dice * cost_dice +
-                self.cost_oov  * cost_oov
+                + self.cost_dice * cost_dice
+                #self.cost_oov  * cost_oov
             )
             C = C.reshape(num_queries, -1).cpu()
 
