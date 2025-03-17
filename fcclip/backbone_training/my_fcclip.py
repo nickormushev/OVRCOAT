@@ -726,7 +726,7 @@ class MYFCCLIP(nn.Module):
             self.init_embedding = True
 
 
-        self.frozen_backbone.eval()
+        #self.frozen_backbone.eval()
         if not self.train_seg_head:
             self.sem_seg_head.eval()
 
