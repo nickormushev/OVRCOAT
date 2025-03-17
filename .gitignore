@@ -20,3 +20,6 @@ LR*
 
 TORCH*
 TRAIN*
+*run_train.sh
+*run_generate_preds.sh
+*run_evaluation.sh
