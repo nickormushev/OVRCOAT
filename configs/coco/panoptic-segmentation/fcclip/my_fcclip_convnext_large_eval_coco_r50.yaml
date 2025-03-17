@@ -23,14 +23,14 @@ MODEL:
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.0001
-  STEPS: (15000, 17500)
-  MAX_ITER: 20000
+  STEPS: (45000, 77500)
+  MAX_ITER: 55000
   WARMUP_FACTOR: 1.0
   WARMUP_ITERS: 10
   WEIGHT_DECAY: 0.05
   OPTIMIZER: "ADAMW"
   BACKBONE_MULTIPLIER: 0.1
-  CHECKPOINT_PERIOD: 4000
+  CHECKPOINT_PERIOD: 5000
   CLIP_GRADIENTS:
     ENABLED: True
     CLIP_TYPE: "full_model"
@@ -40,21 +40,22 @@ SOLVER:
     ENABLED: False
 TRAIN:
   LOSSES: # Works only with WITH_FC_CLIP_MASKS: True . For GT masks we always use oov ce and the clip comparison loss
-    - "oov_ce"
+    #- "oov_ce"
+    - "ma_loss"
     - "masks"
     - "labels"
   WITH_FC_CLIP_MASKS: True # Use FC-Clip masks during training instead of gt ones
   SEG_HEAD: True # Requires WITH_FC_CLIP_MASKS. Enables tuning of seg head
-  USE_PRETRAINED_SEG_HEAD_WEIGHTS: True # Load FC-Clip weights for the segmentation head at init
-  USE_TUNED_FEATURES_FOR_SEG_HEAD: True # Passes the tuned clip features to the segmentation head instead of the frozen ones
+  USE_PRETRAINED_SEG_HEAD_WEIGHTS: False # Load FC-Clip weights for the segmentation head at init
+  USE_TUNED_FEATURES_FOR_SEG_HEAD: False # Passes the tuned clip features to the segmentation head instead of the frozen ones
   DETACH_SEG_HEAD: True # Detach the segmentation head from the Clip backbone
 TEST:
   PERFECT_MASKS: False
-  WITH_VOID: True
-  WITH_FC_CLIP: False
-  EVAL_PERIOD: 4000
+  WITH_VOID: False
+  WITH_FC_CLIP: True
+  EVAL_PERIOD: 5000
 DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: True
   NUM_WORKERS: 2
-DATASETS:
-  TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)
+#DATASETS:
+#  TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)

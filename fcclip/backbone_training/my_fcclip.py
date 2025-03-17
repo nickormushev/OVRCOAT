@@ -37,6 +37,9 @@ import cv2
 from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES, ADE20k_COLORS
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 
+from fcclip.backbone_training.mask_aware_loss import MA_Loss
+from fcclip.backbone_training.representation_compensation import Representation_Compensation
+
 from fcclip.modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
     "a photo of a {}.",
@@ -138,6 +141,7 @@ class MYFCCLIP(nn.Module):
         train_seg_head: bool,
         detach_seg_head: bool,
         test_perfect_masks: bool,
+        use_ma_loss: bool,
         test_with_void: bool,
         test_with_fc_clip: bool,
         dist_warmup_iters: int,
@@ -234,6 +238,9 @@ class MYFCCLIP(nn.Module):
         self.geometric_ensemble_alpha = geometric_ensemble_alpha
         self.geometric_ensemble_beta = geometric_ensemble_beta
         self.ensemble_on_valid_mask = ensemble_on_valid_mask
+        
+        self.use_ma_loss = use_ma_loss
+        self.ma_loss = MA_Loss()  # BCELoss BCEWithLogitsLoss SmoothL1Loss
 
         self.train_text_classifier = None
         self.test_text_classifier = None
@@ -416,12 +423,11 @@ class MYFCCLIP(nn.Module):
             "dist_loss": dist_weight,
         }
 
-        if cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS:
-            # Initialize better
-            pool_weights = nn.Parameter(torch.ones((backbone.dim_latent, backbone.dim_latent)) *  0.1)
-        else:
-            pool_weights = None
-
+        # TODO: Make this cleaner
+        use_ma_loss = "ma_loss" in cfg.TRAIN.LOSSES
+        if use_ma_loss:
+            cfg.TRAIN.LOSSES.remove("ma_loss")
+            
         criterion = MYFCCLIP.get_criterion(cfg, sem_seg_head.num_classes)
 
         return {
@@ -434,6 +440,7 @@ class MYFCCLIP(nn.Module):
             "train_with_fc_clip_masks": cfg.TRAIN.WITH_FC_CLIP_MASKS,
             "train_seg_head": cfg.TRAIN.SEG_HEAD,
             "use_tuned_features_for_seg_head": cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD,
+            "use_ma_loss": use_ma_loss,
             "detach_seg_head": cfg.TRAIN.DETACH_SEG_HEAD,
             "test_with_void": cfg.TEST.WITH_VOID,
             "test_with_fc_clip": cfg.TEST.WITH_FC_CLIP,
@@ -575,17 +582,24 @@ class MYFCCLIP(nn.Module):
         if self.detach_seg_head:
             pred_masks = pred_masks.detach()
 
-        outputs['oov_cls_res'], _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
+        oov_cls_res, _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
+        outputs["oov_cls_res"] = oov_cls_res
 
         # FC-CLIP criterion extended with oov_ce loss
-        losses = self.criterion(outputs, targets)
+        losses = self.criterion(outputs, targets) if self.criterion.losses else None
 
-        for k in list(losses.keys()):
-            if k in self.criterion.weight_dict:
-                losses[k] *= self.criterion.weight_dict[k]
-            else:
-                # remove this loss if not specified in `weight_dict`
-                losses.pop(k)
+        if self.train_seg_head and losses:
+            for k in list(losses.keys()):
+                if k in self.criterion.weight_dict:
+                    losses[k] *= self.criterion.weight_dict[k]
+                else:
+                    # remove this loss if not specified in `weight_dict`
+                    losses.pop(k)
+        
+        if self.use_ma_loss:
+            ranking_loss = self.ma_loss(oov_cls_res, pred_masks, targets)
+            losses = {"ranking_loss": ranking_loss} if losses is None else \
+                     {**losses, "ranking_loss": ranking_loss}
 
         dist_loss = self.calculate_dist_loss(clip_feature, frozen_clip_feature)
         losses["dist_loss"] = dist_loss
