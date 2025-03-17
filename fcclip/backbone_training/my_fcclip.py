@@ -503,13 +503,11 @@ class MYFCCLIP(nn.Module):
         mask_cls_probs = torch.cat([
             cls_prob_no_void * (1.0 - is_void_prob),
             is_void_prob], dim=-1)
-        mask_cls_results = torch.log(mask_cls_probs + 1e-8).softmax(-1)
+        mask_cls_results = torch.log(mask_cls_probs + 1e-8)
     
         return mask_cls_results
 
     def out_of_vocab_classification(self, masks, clip_features, text_classifier, num_templates, interpolate_mode="bilinear"):
-
-
         mask_for_pooling = F.interpolate(masks, size=clip_features.shape[-2:], mode=interpolate_mode, align_corners=False)
 
         if "convnext" in self.backbone.model_name.lower():
@@ -572,9 +570,6 @@ class MYFCCLIP(nn.Module):
         return F.cross_entropy(out_vocab_cls_results, gt_labels, reduction='mean')
 
     def train_with_generated_masks(self, targets, seg_head_features, clip_feature, text_classifier, num_templates, frozen_clip_feature):
-        if self.detach_seg_head:
-            seg_head_features = {k: v.detach() for k, v in seg_head_features.items()}
-
         outputs = self.sem_seg_head(seg_head_features)
         pred_masks = outputs["pred_masks"]
         if self.detach_seg_head:
@@ -620,6 +615,63 @@ class MYFCCLIP(nn.Module):
         }
         wandb.log(losses)
         return losses
+    
+    def get_seg_head_features(self, features, frozen_features, text_classifier, num_templates):
+        if self.train_seg_head and self.use_tuned_features_for_seg_head:
+            seg_head_features = features.copy()
+
+            if self.detach_seg_head:
+                for k in seg_head_features.keys():
+                    seg_head_features[k] = seg_head_features[k].detach()
+        else:
+            seg_head_features = frozen_features
+
+        seg_head_features['text_classifier'] = text_classifier
+        seg_head_features['num_templates'] = num_templates
+
+        return seg_head_features
+
+    def get_targets(self, batched_inputs, images):
+        # mask classification target
+        if "instances" in batched_inputs[0]:
+            gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
+            return self.prepare_targets(gt_instances, images)
+
+        return None
+
+    def test_with_imperfect_masks(self, clip_feature, frozen_features,
+                                 features, text_classifier, num_templates, images):
+
+        seg_head_features = self.get_seg_head_features(features, frozen_features,
+                                                text_classifier, num_templates)
+        mask_2_former_outputs = self.sem_seg_head(seg_head_features)
+
+        mask_pred_results = mask_2_former_outputs["pred_masks"]
+        oov_cls_probs, mask_for_pooling = self.out_of_vocab_classification(mask_pred_results,
+                                        clip_feature, text_classifier, num_templates)
+
+        if self.test_with_fc_clip:
+            mask_cls_results = self.ensemble_classifications(mask_2_former_outputs["pred_logits"],
+                                                    oov_cls_probs, mask_for_pooling)
+        else:
+            mask_cls_results = oov_cls_probs
+
+        if self.test_with_void:
+            clip_res = mask_2_former_outputs["pred_logits"]
+            is_void_prob = F.softmax(clip_res, dim=-1)[..., -1:]
+            mask_cls_probs = torch.cat([
+                mask_cls_results * (1.0 - is_void_prob),
+                is_void_prob], dim=-1)
+            mask_cls_results = torch.log(mask_cls_probs + 1e-8)
+
+        mask_pred_results = F.interpolate(
+            mask_pred_results,
+            size=(images.tensor.shape[-2], images.tensor.shape[-1]),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        return mask_cls_results, mask_pred_results
 
     def forward(self, batched_inputs):
         """
@@ -667,10 +719,6 @@ class MYFCCLIP(nn.Module):
         features = self.backbone(images.tensor)
         with torch.no_grad():
             frozen_features = self.frozen_backbone(images.tensor)
-            seg_head_features = frozen_features
-
-        if self.train_seg_head and self.use_tuned_features_for_seg_head:
-            seg_head_features = features
         
         clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
         frozen_clip_feature = frozen_features["clip_vis_dense"]
@@ -678,18 +726,11 @@ class MYFCCLIP(nn.Module):
         text_classifier, num_templates = self.get_text_classifier()
         text_classifier = torch.cat([text_classifier, F.normalize(self.void_embedding.weight, dim=-1)], dim=0)
 
-        seg_head_features['text_classifier'] = text_classifier
-        seg_head_features['num_templates'] = num_templates
-
-        # mask classification target
-        if "instances" in batched_inputs[0]:
-            gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
-            targets = self.prepare_targets(gt_instances, images)
-        else:
-            targets = None
-
         if self.training:
+            targets = self.get_targets(batched_inputs, images)
+
             if self.train_with_fc_clip_masks:
+                seg_head_features = self.get_seg_head_features(features, frozen_features, text_classifier, num_templates)
                 return self.train_with_generated_masks(targets, seg_head_features, clip_feature,
                                                     text_classifier, num_templates, frozen_clip_feature)
             else:
@@ -699,6 +740,7 @@ class MYFCCLIP(nn.Module):
         else:
             with torch.no_grad():
                 if self.test_perfect_masks:
+                    targets = self.get_targets(batched_inputs, images)
                     # We ensemble the pred logits of in-vocab and out-vocab
                     mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
@@ -707,31 +749,10 @@ class MYFCCLIP(nn.Module):
                     mask_pred_results = mask_pred_results.float().to(self.device)
                     mask_cls_results = out_vocab_cls_probs
                 else:
-                    mask_2_former_outputs = self.sem_seg_head(seg_head_features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
+                    mask_cls_results, mask_pred_results = self.test_with_imperfect_masks(clip_feature,
+                                            frozen_features, features, text_classifier,
+                                            num_templates, images)
 
-                    mask_pred_results = mask_2_former_outputs["pred_masks"]
-                    mask_cls_results, mask_for_pooling = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates)
-
-                    if self.test_with_fc_clip:
-                       mask_cls_results = self.ensemble_classifications(mask_2_former_outputs["pred_logits"],
-                                                                mask_cls_results, mask_for_pooling)
-
-                    if self.test_with_void:
-                        clip_res = mask_2_former_outputs["pred_logits"]
-                        is_void_prob = F.softmax(clip_res, dim=-1)[..., -1:]
-                        cls_prob_no_void = mask_cls_results
-                        mask_cls_probs = torch.cat([
-                            cls_prob_no_void * (1.0 - is_void_prob),
-                            is_void_prob], dim=-1)
-                        mask_cls_results = torch.log(mask_cls_probs + 1e-8).softmax(-1)
-
-                    mask_pred_results = F.interpolate(
-                        mask_pred_results,
-                        size=(images.tensor.shape[-2], images.tensor.shape[-1]),
-                        mode="bilinear",
-                        align_corners=False,
-                    )
-            
                 processed_results = []
                 for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
                     mask_cls_results, mask_pred_results, batched_inputs, images.image_sizes
@@ -745,6 +766,9 @@ class MYFCCLIP(nn.Module):
                             mask_pred_result, image_size, height, width
                         )
                         mask_cls_result = mask_cls_result.to(mask_pred_result)
+
+                    if self.test_with_void or self.test_with_fc_clip:
+                        mask_cls_result = F.softmax(mask_cls_result, dim=-1)
 
                     # Use oracle to fix classes based on gt
                     # semantic segmentation inference
@@ -785,18 +809,17 @@ class MYFCCLIP(nn.Module):
     def semantic_inference(self, mask_cls, mask_pred):
         if not self.test_perfect_masks:
             if self.test_with_void or self.test_with_fc_clip:
-                mask_cls = mask_cls[:, :-1]
+                mask_cls = mask_cls[..., :-1]
             mask_pred = mask_pred.sigmoid()
 
         semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
         return semseg
 
     def panoptic_inference(self, mask_cls, mask_pred):
+        scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
+
         if not self.test_perfect_masks:
-            scores, labels = mask_cls.max(-1)
             mask_pred = mask_pred.sigmoid()
-        else: 
-            scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
 
         num_classes = len(self.test_metadata.stuff_classes)
         keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think
