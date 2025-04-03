@@ -41,5 +41,6 @@ MODEL:
       SEMANTIC_ON: True
       INSTANCE_ON: True
       PANOPTIC_ON: True
-      OVERLAP_THRESHOLD: 0.8
+      #TODO: Set back to 0.8 if it doesn't help
+      OVERLAP_THRESHOLD: 0.7
       OBJECT_MASK_THRESHOLD: 0.8

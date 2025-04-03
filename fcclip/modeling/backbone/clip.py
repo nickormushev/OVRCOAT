@@ -84,12 +84,12 @@ class CLIP(Backbone):
             "clip_embedding": self.dim_latent
         }
 
+        # The eval is irrelevant for training since detectron sets it to train
+        self.eval()
         if cfg.MODEL.BACKBONE.FREEZE:
-            self.eval()
             self.freeze_everything()
         else:
             self.freeze_text_encoder()
-            self.train()
 
     def freeze_text_encoder(self):
         for param in self.clip_model.transformer.parameters():
@@ -101,6 +101,21 @@ class CLIP(Backbone):
         # Freeze the layer normalization final layer
         for param in self.clip_model.ln_final.parameters():
             param.requires_grad = False
+        
+        # For ConvNeXt, freeze the stem and the first 4 stages
+        # TODO: Make sure this is correct for ResNet or if it has an equivalent
+        for name, param in self.named_parameters():
+            if 'clip_model.visual.trunk.stem' in name:
+                param.requires_grad = True
+            if 'clip_model.visual.trunk.stages' in name:
+                param.requires_grad = True
+            if 'clip_model.visual.trunk.norm_pre' in name:
+                param.requires_grad = True
+
+            if 'clip_model.visual.trunk.head.norm.' in name:
+                param.requires_grad = False
+            if 'clip_model.visual.head.mlp.' in name:
+                param.requires_grad = False
 
         # Freeze the text projection layer
         self.clip_model.text_projection.requires_grad = False

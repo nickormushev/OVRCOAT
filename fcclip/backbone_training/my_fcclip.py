@@ -194,7 +194,6 @@ class MYFCCLIP(nn.Module):
         self.backbone = backbone
         self.weight_dict = weight_dict
         self.frozen_backbone = frozen_backbone
-        self.frozen_backbone.eval()
         self.dist_warmup_iters = dist_warmup_iters
         self.test_perfect_masks = test_perfect_masks
         self.test_with_void = test_with_void
@@ -245,8 +244,8 @@ class MYFCCLIP(nn.Module):
         self.train_text_classifier = None
         self.test_text_classifier = None
 
-        self.init_embedding = False
         self.void_embedding = void_embedding
+        self.init_embedding = False
 
         self.use_pooling_weights = use_pooling_weights
 
@@ -346,10 +345,10 @@ class MYFCCLIP(nn.Module):
         # building criterion
         matcher = HungarianMatcher(
             cost_class=class_weight,
-            cost_oov=oov_weight,
             cost_mask=mask_weight,
             cost_dice=dice_weight,
             num_points=cfg.MODEL.MASK_FORMER.TRAIN_NUM_POINTS,
+            cost_oov=oov_weight,
         )
 
         weight_dict = {"loss_ce": class_weight,
@@ -429,6 +428,7 @@ class MYFCCLIP(nn.Module):
             cfg.TRAIN.LOSSES.remove("ma_loss")
             
         criterion = MYFCCLIP.get_criterion(cfg, sem_seg_head.num_classes)
+        MYFCCLIP.cfg = cfg
 
         return {
             "backbone": backbone,
@@ -664,19 +664,22 @@ class MYFCCLIP(nn.Module):
         oov_cls_probs, mask_for_pooling = self.out_of_vocab_classification(mask_pred_results,
                                         clip_feature, text_classifier, num_templates)
 
+        assert not (self.test_with_fc_clip and self.test_with_void), "You cannot use void and fc-clip at the same time"
         if self.test_with_fc_clip:
             mask_cls_results = self.ensemble_classifications(mask_2_former_outputs["pred_logits"],
                                                     oov_cls_probs, mask_for_pooling)
         else:
             mask_cls_results = oov_cls_probs
 
-        if self.test_with_void:
-            clip_res = mask_2_former_outputs["pred_logits"]
-            is_void_prob = F.softmax(clip_res, dim=-1)[..., -1:]
-            mask_cls_probs = torch.cat([
-                mask_cls_results * (1.0 - is_void_prob),
-                is_void_prob], dim=-1)
-            mask_cls_results = torch.log(mask_cls_probs + 1e-8)
+            # TODO: Set this from config only for evaluation of some models
+            # Or retrain those models
+            if self.test_with_void:
+                clip_res = mask_2_former_outputs["pred_logits"]
+                is_void_prob = F.softmax(clip_res, dim=-1)[..., -1:]
+                mask_cls_probs = torch.cat([
+                    mask_cls_results * (1.0 - is_void_prob),
+                    is_void_prob], dim=-1)
+                mask_cls_results = torch.log(mask_cls_probs + 1e-8)
 
         mask_pred_results = F.interpolate(
             mask_pred_results,
@@ -724,8 +727,10 @@ class MYFCCLIP(nn.Module):
             checkpointer.load(self.cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
             self.void_embedding = model.void_embedding
             self.init_embedding = True
+    
 
-
+        # TODO: Once you get reasonable PQ try to uncomment this
+        # I am pretty sure it should be in eval mode cause that is 1) what fc-clip use 2) is more consistent
         #self.frozen_backbone.eval()
         if not self.train_seg_head:
             self.sem_seg_head.eval()
@@ -750,17 +755,18 @@ class MYFCCLIP(nn.Module):
             else:
                 return self.train_with_gt_masks(targets, clip_feature, text_classifier,
                                             num_templates, frozen_clip_feature)
-
         else:
             with torch.no_grad():
                 if self.test_perfect_masks:
                     targets = self.get_targets(batched_inputs, images)
                     # We ensemble the pred logits of in-vocab and out-vocab
+                    # TODO: sometimes perfect mask SQ on stuff is not 100% check why
                     mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
-                    out_vocab_cls_probs, _ = self.out_of_vocab_classification(mask_pred_results, clip_feature, text_classifier, num_templates, interpolate_mode="nearest-exact")
+                    out_vocab_cls_probs, _ = self.out_of_vocab_classification(mask_pred_results,
+                                                                clip_feature, text_classifier, num_templates)
 
-                    mask_pred_results = mask_pred_results.float().to(self.device)
+                    mask_pred_results = mask_pred_results.to(self.device)
                     mask_cls_results = out_vocab_cls_probs
                 else:
                     mask_cls_results, mask_pred_results = self.test_with_imperfect_masks(clip_feature,

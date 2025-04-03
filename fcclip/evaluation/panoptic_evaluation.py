@@ -44,7 +44,6 @@ class COCOPanopticWandbEvaluator(COCOPanopticEvaluator):
         #wandb.log(res['panoptic_seg'])
         return res
 
-# TODO: Validate calculations of missed objects again!
 from panopticapi.utils import get_traceback, rgb2id
 
 OFFSET = 256 * 256 * 256
