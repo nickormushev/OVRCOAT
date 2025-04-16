@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import json
 import pandas as pd
 from collections import defaultdict
+from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
 
 from panopticapi.utils import rgb2id
 from detectron2.config import configurable
@@ -664,6 +665,7 @@ class MYFCCLIP(nn.Module):
         oov_cls_probs, mask_for_pooling = self.out_of_vocab_classification(mask_pred_results,
                                         clip_feature, text_classifier, num_templates)
 
+        self.clip_preds = oov_cls_probs
         assert not (self.test_with_fc_clip and self.test_with_void), "You cannot use void and fc-clip at the same time"
         if self.test_with_fc_clip:
             mask_cls_results = self.ensemble_classifications(mask_2_former_outputs["pred_logits"],
@@ -689,6 +691,29 @@ class MYFCCLIP(nn.Module):
         )
 
         return mask_cls_results, mask_pred_results
+
+    def fix_mask_classification_with_clip(self, masks, num_classes, pred_clfs, clip_preds, use_things = True, clip_treshold=0.7):
+        pred_clfs_np = pred_clfs.cpu().detach().numpy()
+        clip_preds_np = clip_preds.cpu().detach().numpy()
+        new_mask_cls = pred_clfs_np
+
+        for i, mask in enumerate(masks):
+            pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
+            clip_category = np.argmax(clip_preds_np[i])
+            clip_prob = np.max(clip_preds_np[i])
+            things = self.test_metadata.thing_classes
+            clip_cat_name = ADE20K_150_CATEGORIES[clip_category]['name']
+
+            is_thing = clip_cat_name in things
+            
+            # checks if CLIP classification is good. second one doesn't
+            thing_check = is_thing if use_things else True
+
+            if pred_is_background and thing_check and clip_prob >= clip_treshold:
+                new_mask_cls[i, 0:num_classes] = 0
+                new_mask_cls[i, clip_category] = clip_prob
+        
+        return torch.tensor(new_mask_cls, device=self.device)
 
     def forward(self, batched_inputs):
         """
@@ -789,6 +814,12 @@ class MYFCCLIP(nn.Module):
 
                     if self.test_with_void or self.test_with_fc_clip:
                         mask_cls_result = F.softmax(mask_cls_result, dim=-1)
+                    
+                    if not self.test_perfect_masks:
+                        num_classes = mask_cls_result.shape[1]
+                        mask_cls_result = self.fix_mask_classification_with_clip(
+                            mask_pred_results, num_classes, mask_cls_result, self.clip_preds[0]
+                        )
 
                     # Use oracle to fix classes based on gt
                     # semantic segmentation inference
@@ -840,6 +871,7 @@ class MYFCCLIP(nn.Module):
 
         if not self.test_perfect_masks:
             mask_pred = mask_pred.sigmoid()
+            mask_pred = mask_pred > 0.5 # Binarize the masks
 
         num_classes = len(self.test_metadata.stuff_classes)
         keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think
