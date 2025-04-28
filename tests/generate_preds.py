@@ -254,7 +254,7 @@ def process_segment(mask, uid, si, segment_idx, text_mask):
         cv2.putText(text_mask, category_name , (centroid_x, centroid_y),
             cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
-def apply_color_palette(segmentation, palette, dict):
+def apply_color_palette(img, segmentation, palette, dict, alpha=0.5):
     if len(palette) == 0:
         return segmentation
     h, w = segmentation.shape
@@ -270,6 +270,10 @@ def apply_color_palette(segmentation, palette, dict):
         if uid != 0:
             si[segment_idx]['rgb2id'] = rgb2id(palette[uid % len(palette)].tolist())
 
+    # Blend the colored mask with the original image
+    colored_mask = cv2.addWeighted(img, 1 - alpha, colored_mask, alpha, 0)
+
+    # Overlay the text mask on top of the blended image
     combined_mask = cv2.addWeighted(colored_mask, 1, text_mask, 1, 0)
     dict["segments_info"] = si
     return combined_mask, dict
@@ -305,7 +309,7 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations, te
 
         # Convert the panoptic segmentation to RGB format
         palette = get_color_palette(len(pred["panoptic_seg"][1]))
-        pan_img, dict = apply_color_palette(pan_img, palette, dict)
+        pan_img, dict = apply_color_palette(img, pan_img, palette, dict)
 
     pan_annotations.append(dict)
     cv2.imwrite(pan_img_path, pan_img)
