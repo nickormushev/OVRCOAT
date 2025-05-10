@@ -316,6 +316,7 @@ def setup(args):
     """
     cfg = get_cfg()
     cfg.MODEL.BACKBONE.FREEZE = True
+    cfg.MODEL.RECLASSIFY_VOID = False
     cfg.MODEL.BACKBONE.PROMPT = CN()
     cfg.MODEL.BACKBONE.PROMPT.LEARNABLE = False
     cfg.MODEL.BACKBONE.PROMPT.DIM = 512

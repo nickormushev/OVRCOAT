@@ -199,6 +199,7 @@ class FCCLIP(nn.Module):
         pixel_mean: Tuple[float],
         pixel_std: Tuple[float],
         # inference
+        reclassify_void: bool,
         semantic_on: bool,
         panoptic_on: bool,
         instance_on: bool,
@@ -254,6 +255,7 @@ class FCCLIP(nn.Module):
         self.instance_on = instance_on
         self.panoptic_on = panoptic_on
         self.test_topk_per_image = test_topk_per_image
+        self.reclassify_void = reclassify_void
 
         if not self.semantic_on:
             assert self.sem_seg_postprocess_before_inference
@@ -401,6 +403,7 @@ class FCCLIP(nn.Module):
 
         return {
             "backbone": backbone,
+            "reclassify_void": cfg.MODEL.RECLASSIFY_VOID,
             "sem_seg_head": sem_seg_head,
             "criterion": criterion,
             "num_queries": cfg.MODEL.MASK_FORMER.NUM_OBJECT_QUERIES,
@@ -781,6 +784,33 @@ class FCCLIP(nn.Module):
         
         output_path='./tests/void_histogram_data_3.csv'
         df.to_csv(output_path, mode='a', header=not os.path.exists(output_path))
+    
+    def reclassify_void_masks(self, num_classes, pred_clfs, clip_preds, clip_similarities,
+                                use_things = False, clip_treshold=0.9,
+                                sim_threshold=22, softmax_temperature=7):
+
+        pred_clfs_np = F.softmax(pred_clfs, dim=-1).cpu().detach().numpy()
+        clip_preds_np = clip_preds.cpu().detach().numpy()
+        new_mask_cls = pred_clfs_np
+
+        for i in range(pred_clfs_np.shape[0]):
+            pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
+            clip_category = np.argmax(clip_preds_np[i])
+            clip_prob = np.max(clip_preds_np[i])
+            similarity = clip_similarities[i, clip_category]
+
+            things = self.test_metadata.thing_classes
+            clip_cat_name = ADE20K_150_CATEGORIES[clip_category]['name']
+            is_thing = clip_cat_name in things
+            
+            thing_check = is_thing if use_things else True
+
+            if pred_is_background and thing_check and clip_prob >= clip_treshold and similarity > sim_threshold:
+                new_mask_cls[i, 0:num_classes - 1] = F.softmax(clip_similarities[i]/softmax_temperature, dim=-1).cpu().detach().numpy()
+                new_mask_cls[i, num_classes - 1] = 0
+
+        return torch.tensor(new_mask_cls, device=self.device)
+
 
     def forward(self, batched_inputs):
         """
@@ -929,8 +959,8 @@ class FCCLIP(nn.Module):
                 else:
                     self.test_cfg = None
 
+                num_classes = mask_cls_result.shape[1]
                 if self.test_cfg is not None and self.test_cfg.use_oracle:
-                    num_classes = mask_cls_result.shape[1]
                     instances = input_per_image['instances']
                     gt_ann = input_per_image['gt_ann']
 
@@ -964,6 +994,10 @@ class FCCLIP(nn.Module):
                     if self.test_cfg.use_clip_oracle:
                         mask_cls_result = self.fix_mask_classification_with_clip(mask_pred_result, num_classes,
                                                                                  mask_cls_result, out_vocab_cls_probs[0], gt_img, gt_ann)
+
+                
+                if self.reclassify_void and self.test_cfg is None:
+                    mask_cls_result = self.reclassify_void_masks(num_classes, mask_cls_result, out_vocab_cls_probs[0], out_vocab_cls_results[0])
                     
 
 
@@ -980,7 +1014,7 @@ class FCCLIP(nn.Module):
 
                 # panoptic segmentation inference
                 if self.panoptic_on:
-                    panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result, self.test_cfg.use_class_oracle)
+                    panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result)
                     processed_results[-1]["panoptic_seg"] = panoptic_r
                 
                 # instance segmentation inference
@@ -1012,13 +1046,17 @@ class FCCLIP(nn.Module):
         semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
         return semseg
 
-    def panoptic_inference(self, mask_cls, mask_pred, use_oracle):
-        if use_oracle:
+    def panoptic_inference(self, mask_cls, mask_pred):
+        use_oracle = self.test_cfg is not None and self.test_cfg.use_class_oracle
+        if use_oracle or self.reclassify_void:
             scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
         else:
             scores, labels = F.softmax(mask_cls, dim=-1).max(-1) # For each pixel, get the class with the highest score
 
         mask_pred = mask_pred.sigmoid()
+        if self.reclassify_void or (self.test_cfg is not None and self.test_cfg.use_clip_oracle):
+            mask_pred = (mask_pred > 0.5)
+
         num_classes = len(self.test_metadata.stuff_classes)
         keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think
         cur_scores = scores[keep]
