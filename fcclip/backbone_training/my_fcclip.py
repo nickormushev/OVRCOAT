@@ -162,6 +162,7 @@ class MYFCCLIP(nn.Module):
         panoptic_on: bool,
         instance_on: bool,
         test_topk_per_image: int,
+        reclassify_void: bool,
         # FC-CLIP
         geometric_ensemble_alpha: float,
         geometric_ensemble_beta: float,
@@ -223,6 +224,7 @@ class MYFCCLIP(nn.Module):
         self.instance_on = instance_on
         self.panoptic_on = panoptic_on
         self.test_topk_per_image = test_topk_per_image
+        self.reclassify_void = reclassify_void
 
         self.train_with_fc_clip_masks = train_with_fc_clip_masks
         self.train_seg_head = train_seg_head
@@ -434,6 +436,7 @@ class MYFCCLIP(nn.Module):
         return {
             "backbone": backbone,
             "weight_dict": weight_dict,
+            "reclassify_void": cfg.MODEL.RECLASSIFY_VOID,
             "frozen_backbone": frozen_backbone,
             "void_embedding": void_embedding,
             "sem_seg_head": sem_seg_head,
@@ -529,9 +532,9 @@ class MYFCCLIP(nn.Module):
         out_vocab_cls_results = get_classification_logits(pooled_clip_feature, text_classifier,
                                                         self.backbone.clip_model.logit_scale, num_templates)
         out_vocab_cls_results = out_vocab_cls_results[..., :-1]
-        out_vocab_cls_results = out_vocab_cls_results.softmax(-1)
+        out_vocab_cls_probs = out_vocab_cls_results.softmax(-1)
 
-        return out_vocab_cls_results, mask_for_pooling
+        return out_vocab_cls_probs, mask_for_pooling, out_vocab_cls_results
     
     def get_pooled_features(self, clip_features):
         pooled_features = []
@@ -662,7 +665,7 @@ class MYFCCLIP(nn.Module):
         mask_2_former_outputs = self.sem_seg_head(seg_head_features)
 
         mask_pred_results = mask_2_former_outputs["pred_masks"]
-        oov_cls_probs, mask_for_pooling = self.out_of_vocab_classification(mask_pred_results,
+        oov_cls_probs, mask_for_pooling, similarities = self.out_of_vocab_classification(mask_pred_results,
                                         clip_feature, text_classifier, num_templates)
 
         self.clip_preds = oov_cls_probs
@@ -690,29 +693,32 @@ class MYFCCLIP(nn.Module):
             align_corners=False,
         )
 
-        return mask_cls_results, mask_pred_results
+        return mask_cls_results, mask_pred_results, similarities, oov_cls_probs
+    
+    def reclassify_void_masks(self, num_classes, pred_clfs, clip_preds, clip_similarities,
+                                use_things = True, clip_treshold=0.9,
+                                sim_threshold=22, softmax_temperature=6):
 
-    def fix_mask_classification_with_clip(self, masks, num_classes, pred_clfs, clip_preds, use_things = True, clip_treshold=0.7):
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
         clip_preds_np = clip_preds.cpu().detach().numpy()
         new_mask_cls = pred_clfs_np
 
-        for i, mask in enumerate(masks):
+        for i in range(pred_clfs_np.shape[0]):
             pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
             clip_category = np.argmax(clip_preds_np[i])
             clip_prob = np.max(clip_preds_np[i])
+            similarity = clip_similarities[i, clip_category]
+
             things = self.test_metadata.thing_classes
             clip_cat_name = ADE20K_150_CATEGORIES[clip_category]['name']
-
             is_thing = clip_cat_name in things
             
-            # checks if CLIP classification is good. second one doesn't
             thing_check = is_thing if use_things else True
 
-            if pred_is_background and thing_check and clip_prob >= clip_treshold:
-                new_mask_cls[i, 0:num_classes] = 0
-                new_mask_cls[i, clip_category] = clip_prob
-        
+            if pred_is_background and thing_check and clip_prob >= clip_treshold and similarity > sim_threshold:
+                new_mask_cls[i, 0:num_classes - 1] = F.softmax(clip_similarities[i]/softmax_temperature, dim=-1).cpu().detach().numpy()
+                new_mask_cls[i, num_classes - 1] = 0
+
         return torch.tensor(new_mask_cls, device=self.device)
 
     def forward(self, batched_inputs):
@@ -788,13 +794,13 @@ class MYFCCLIP(nn.Module):
                     # TODO: sometimes perfect mask SQ on stuff is not 100% check why
                     mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
-                    out_vocab_cls_probs, _ = self.out_of_vocab_classification(mask_pred_results,
+                    out_vocab_cls_probs, _, _ = self.out_of_vocab_classification(mask_pred_results,
                                                                 clip_feature, text_classifier, num_templates)
 
                     mask_pred_results = mask_pred_results.to(self.device)
                     mask_cls_results = out_vocab_cls_probs
                 else:
-                    mask_cls_results, mask_pred_results = self.test_with_imperfect_masks(clip_feature,
+                    mask_cls_results, mask_pred_results, similarities, out_vocab_cls_probs = self.test_with_imperfect_masks(clip_feature,
                                             frozen_features, features, text_classifier,
                                             num_templates, images)
 
@@ -814,13 +820,11 @@ class MYFCCLIP(nn.Module):
 
                     if self.test_with_void or self.test_with_fc_clip:
                         mask_cls_result = F.softmax(mask_cls_result, dim=-1)
-                    
-                    if not self.test_perfect_masks:
-                        num_classes = mask_cls_result.shape[1]
-                        mask_cls_result = self.fix_mask_classification_with_clip(
-                            mask_pred_results, num_classes, mask_cls_result, self.clip_preds[0]
-                        )
 
+                        if self.reclassify_void:
+                            num_classes = mask_cls_result.shape[1]
+                            mask_cls_result = self.reclassify_void_masks(num_classes, mask_cls_result, out_vocab_cls_probs[0], similarities[0])
+                    
                     # Use oracle to fix classes based on gt
                     # semantic segmentation inference
                     if self.semantic_on:
