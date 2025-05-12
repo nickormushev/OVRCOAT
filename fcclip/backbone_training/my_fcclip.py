@@ -570,7 +570,7 @@ class MYFCCLIP(nn.Module):
         
     
     def calculate_ce_loss(self, masks, clip_feature, text_classifier, num_templates, gt_labels):
-        out_vocab_cls_results, _ = self.out_of_vocab_classification(masks, clip_feature, text_classifier, num_templates)
+        out_vocab_cls_results, _, _ = self.out_of_vocab_classification(masks, clip_feature, text_classifier, num_templates)
         batch_size, num_masks, num_classes = out_vocab_cls_results.shape
 
         # Reshape out_vocab_cls_results to [batch_size * num_objects, num_classes]
@@ -586,7 +586,7 @@ class MYFCCLIP(nn.Module):
         if self.detach_seg_head:
             pred_masks = pred_masks.detach()
 
-        oov_cls_res, _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
+        oov_cls_res, _, _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
         outputs["oov_cls_res"] = oov_cls_res
 
         # FC-CLIP criterion extended with oov_ce loss
@@ -696,15 +696,16 @@ class MYFCCLIP(nn.Module):
         return mask_cls_results, mask_pred_results, similarities, oov_cls_probs
     
     def reclassify_void_masks(self, num_classes, pred_clfs, clip_preds, clip_similarities,
-                                use_things = True, clip_treshold=0.9,
-                                sim_threshold=22, softmax_temperature=6):
+                                use_things = True, clip_treshold=0.83,
+                                sim_threshold=26, softmax_temperature=6):
 
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
         clip_preds_np = clip_preds.cpu().detach().numpy()
         new_mask_cls = pred_clfs_np
 
-        for i in range(pred_clfs_np.shape[0]):
-            pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
+        for i in range(pred_clfs_np.shape[0]): 
+            pred_category = np.argmax(pred_clfs_np[i])
+            pred_is_background = pred_category == (num_classes - 1)
             clip_category = np.argmax(clip_preds_np[i])
             clip_prob = np.max(clip_preds_np[i])
             similarity = clip_similarities[i, clip_category]
@@ -752,12 +753,12 @@ class MYFCCLIP(nn.Module):
         # ImageList stores images in varying shapes by padding them to same size
         images = ImageList.from_tensors(images, self.size_divisibility)
 
-        if not self.init_embedding:
-            model = build_model(self.cfg)
-            checkpointer = DetectionCheckpointer(model)
-            checkpointer.load(self.cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
-            self.void_embedding = model.void_embedding
-            self.init_embedding = True
+        #if not self.init_embedding:
+        #    model = build_model(self.cfg)
+        #    checkpointer = DetectionCheckpointer(model)
+        #    checkpointer.load(self.cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
+        #    self.void_embedding = model.void_embedding
+        #    self.init_embedding = True
     
 
         # TODO: Once you get reasonable PQ try to uncomment this
