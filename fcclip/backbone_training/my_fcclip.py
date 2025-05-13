@@ -6,40 +6,26 @@ All Bytedance's Modifications are Copyright (year) Bytedance Ltd. and/or its aff
 Reference: https://github.com/facebookresearch/Mask2Former/blob/main/mask2former/maskformer_model.py
 """
 from typing import Tuple
-from detectron2.config import CfgNode as CN
 
 import torch
-import random
-import os
 from torch import nn
 from torch.nn import functional as F
 
 import numpy as np
-import matplotlib.pyplot as plt
-import json
-import pandas as pd
-from collections import defaultdict
-from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
 
-from panopticapi.utils import rgb2id
 from detectron2.config import configurable
 from detectron2.data import MetadataCatalog
 from detectron2.modeling import META_ARCH_REGISTRY, build_backbone, build_sem_seg_head, build_model
 from detectron2.modeling.backbone import Backbone
 from detectron2.modeling.postprocessing import sem_seg_postprocess
-from detectron2.structures import Boxes, ImageList, Instances, BitMasks
+from detectron2.structures import Boxes, ImageList, Instances
 from detectron2.utils.memory import retry_if_cuda_oom
 from detectron2.checkpoint import DetectionCheckpointer
 
 from fcclip.modeling.criterion import SetCriterion
-from matplotlib import cm
 from fcclip.modeling.matcher import HungarianMatcher
-import cv2
-from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES, ADE20k_COLORS
-from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
 
 from fcclip.backbone_training.mask_aware_loss import MA_Loss
-from fcclip.backbone_training.representation_compensation import Representation_Compensation
 
 from fcclip.modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -696,7 +682,7 @@ class MYFCCLIP(nn.Module):
         return mask_cls_results, mask_pred_results, similarities, oov_cls_probs
     
     def reclassify_void_masks(self, num_classes, pred_clfs, clip_preds, clip_similarities,
-                                use_things = True, clip_treshold=0.83,
+                                give_things_pirority = True, clip_treshold=0.8,
                                 sim_threshold=26, softmax_temperature=6):
 
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
@@ -710,15 +696,14 @@ class MYFCCLIP(nn.Module):
             clip_prob = np.max(clip_preds_np[i])
             similarity = clip_similarities[i, clip_category]
 
-            things = self.test_metadata.thing_classes
-            clip_cat_name = ADE20K_150_CATEGORIES[clip_category]['name']
-            is_thing = clip_cat_name in things
-            
-            thing_check = is_thing if use_things else True
+            is_thing = clip_category in self.test_metadata.thing_dataset_id_to_contiguous_id.values()
 
-            if pred_is_background and thing_check and clip_prob >= clip_treshold and similarity > sim_threshold:
+            if pred_is_background and clip_prob >= clip_treshold and similarity > sim_threshold:
                 new_mask_cls[i, 0:num_classes - 1] = F.softmax(clip_similarities[i]/softmax_temperature, dim=-1).cpu().detach().numpy()
                 new_mask_cls[i, num_classes - 1] = 0
+
+                if is_thing and give_things_pirority:
+                    new_mask_cls[i, clip_category] += 0.1 # Gives priority to things.
 
         return torch.tensor(new_mask_cls, device=self.device)
 
