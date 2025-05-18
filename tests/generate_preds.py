@@ -78,6 +78,7 @@ from fcclip import MaskFormerPanopticDatasetMapper
 def setup_cfg(args):
     # load config from file and command-line arguments
     cfg = get_cfg()
+    cfg.MODEL.RECLASSIFY_VOID = False
     cfg.MODEL.BACKBONE.FREEZE = True
     cfg.MODEL.BACKBONE.PROMPT = CN()
     cfg.MODEL.BACKBONE.PROMPT.LEARNABLE = False
