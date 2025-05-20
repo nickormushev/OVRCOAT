@@ -12,6 +12,7 @@ tests/preds*
 *box-masks*
 
 datasets/coco/*
+datasets/cityscapes/*
 logs/*
 output/*
 fcclip_cocopan.pth
