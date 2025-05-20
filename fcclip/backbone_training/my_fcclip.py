@@ -51,46 +51,6 @@ OBJECT_COUNT = 0
 # ADE20K specific. Is number of classes - 1 otherwise
 VOID_CATEGORY_ID = 150
 
-def get_unique_color(unique_id, prev_colors, min_distance=20):
-    np.random.seed(unique_id)
-    color = np.random.randint(100, 255, 3).tolist()
-    while True:
-        color = np.random.randint(100, 255, 3).tolist()
-        if all(np.linalg.norm(np.array(color) - np.array(prev_color)) >= min_distance for prev_color in prev_colors):
-            break
-    return color
-
-def calculate_entropy(probs):
-    return -np.sum(probs * np.log(probs + 1e-6))
-
-from skimage.measure import regionprops, perimeter, label
-def calculate_mask_properties(mask):
-
-    # Calculate region properties
-    binary_mask = (mask.sigmoid() > 0.5)    
-    bin_area = binary_mask.sum().item()
-
-    if bin_area == 0:
-        return 0, 0, 0, bin_area
-
-    binary_mask = binary_mask.cpu().numpy().astype(np.uint8)
-    # labeled_mask = label(binary_mask)  This is not needed since we have only one region in the mask
-    # It assigns unique labels to the different regions in the mask
-    props = regionprops(binary_mask)[0]
-    
-    # Eccentricity
-    eccentricity = props.eccentricity
-    
-    # Compactness (also known as Roundness or Circularity)
-    area = props.area
-    perim = perimeter(binary_mask)
-    compactness = (perim ** 2) / (4 * np.pi * area)
-    
-    # Perimeter-to-Area Ratio
-    perimeter_to_area_ratio = perim / area
-    
-    return eccentricity, compactness, perimeter_to_area_ratio, area
-
 def batched_cosine_similarity_loss(A, B):
     A_normalized = F.normalize(A, p=2, dim=2) 
     B_normalized = F.normalize(B, p=2, dim=2)
@@ -738,17 +698,13 @@ class MYFCCLIP(nn.Module):
         # ImageList stores images in varying shapes by padding them to same size
         images = ImageList.from_tensors(images, self.size_divisibility)
 
-        #if not self.init_embedding:
-        #    model = build_model(self.cfg)
-        #    checkpointer = DetectionCheckpointer(model)
-        #    checkpointer.load(self.cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
-        #    self.void_embedding = model.void_embedding
-        #    self.init_embedding = True
-    
+       # if not self.init_embedding:
+       #    model = build_model(self.cfg)
+       #    checkpointer = DetectionCheckpointer(model)
+       #    checkpointer.load(self.cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
+       #    self.void_embedding = model.void_embedding
+       #    self.init_embedding = True
 
-        # TODO: Once you get reasonable PQ try to uncomment this
-        # I am pretty sure it should be in eval mode cause that is 1) what fc-clip use 2) is more consistent
-        #self.frozen_backbone.eval()
         if not self.train_seg_head:
             self.sem_seg_head.eval()
 
@@ -776,8 +732,6 @@ class MYFCCLIP(nn.Module):
             with torch.no_grad():
                 if self.test_perfect_masks:
                     targets = self.get_targets(batched_inputs, images)
-                    # We ensemble the pred logits of in-vocab and out-vocab
-                    # TODO: sometimes perfect mask SQ on stuff is not 100% check why
                     mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
                     out_vocab_cls_probs, _, _ = self.out_of_vocab_classification(mask_pred_results,
@@ -811,7 +765,6 @@ class MYFCCLIP(nn.Module):
                             num_classes = mask_cls_result.shape[1]
                             mask_cls_result = self.reclassify_void_masks(num_classes, mask_cls_result, out_vocab_cls_probs[0], similarities[0])
                     
-                    # Use oracle to fix classes based on gt
                     # semantic segmentation inference
                     if self.semantic_on:
                         r = retry_if_cuda_oom(self.semantic_inference)(mask_cls_result, mask_pred_result) # Multiplies class with mask results
@@ -861,7 +814,7 @@ class MYFCCLIP(nn.Module):
 
         if not self.test_perfect_masks:
             mask_pred = mask_pred.sigmoid()
-            mask_pred = mask_pred > 0.5 # Binarize the masks
+            #mask_pred = mask_pred > 0.5 # Binarize the masks
 
         num_classes = len(self.test_metadata.stuff_classes)
         keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think

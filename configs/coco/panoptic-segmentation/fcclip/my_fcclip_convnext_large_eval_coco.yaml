@@ -38,8 +38,8 @@ SOLVER:
     ENABLED: False
 TRAIN:
   LOSSES: # Works only with WITH_FC_CLIP_MASKS: True . For GT masks we always use oov ce and the clip comparison loss
-    #- "oov_ce"
-    - "ma_loss"
+    - "oov_ce"
+    #- "ma_loss"
     #- "masks"
     #- "labels"
   WITH_FC_CLIP_MASKS: True # Use FC-Clip masks during training instead of gt ones
