@@ -1,5 +1,7 @@
 import json
 import matplotlib.pyplot as plt
+import seaborn as sns
+from matplotlib.patches import Patch
 counter = {}
 
 original = json.load(open('fcclip/tests/found_by_oracle/found-objects-original.json'))
@@ -54,26 +56,68 @@ keys = [ key for key, val in sorted_items if val.ratio() > 0.4]
 values = [val.ratio() for key, val in sorted_items if val.ratio() > 0.4]
 
 
+sns.set_theme(style="whitegrid")  # Applies the correct base style
+sns.set_palette("muted") 
 
-plt.figure(figsize=(10, 5))
-plt.bar(keys, values)
+# ... [rest of your data processing code remains unchanged]
+
+# Rebuild filtered + labeled data
+keys = []
+values = []
+colors = []
+
+for key, val in sorted_items:
+    ratio = val.ratio()
+    if ratio > 0.4:
+        clean_name = key.replace('*', '')
+        is_seen = key.startswith('*') and key.endswith('*')
+        keys.append(clean_name)
+        values.append(ratio)
+        colors.append('tab:blue' if is_seen else 'tab:orange')
+
+# Plot ratio (percentage missed)
+plt.figure(figsize=(15, 6))
+bars = plt.bar(keys, values, color=colors)
+
+# Annotate bars
+#y_max = max(values)
+#for bar, val in zip(bars, values):
+#    height = bar.get_height()
+#    offset = y_max * 0.03
+#    plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + offset,
+#             f'{val:.2f}', ha='center', va='bottom', fontsize=8)
+
+# Axis labels and title
 plt.xlabel('Category')
-plt.ylabel('Percentage')
-plt.title('What percent of elements in this category were found by oracle compared to fcclip. * means seen')
-plt.xticks(rotation=90)
+plt.ylabel('Missed Detection Rate')
+plt.title('Objects Found by Oracle but Missed by FC-CLIP')
+plt.xticks(rotation=45, ha='right')
+
+# Legend
+legend_elements = [Patch(facecolor='tab:blue', label='Seen category'),
+                   Patch(facecolor='tab:orange', label='Unseen category')]
+plt.legend(handles=legend_elements)
+
 plt.tight_layout()
-plt.savefig('fcclip/tests/found_by_oracle/compare.png')
+plt.savefig('fcclip/tests/found_by_oracle/compare_improved.svg')
+plt.close()
 
-values = [val.counter for key, val in sorted_items if val.ratio() > 0.4]
+# Plot raw count (optional, same color code)
+values_count = [val.counter for key, val in sorted_items if val.ratio() > 0.4]
 
-plt.figure(figsize=(10, 5))
-plt.bar(keys, values)
+plt.figure(figsize=(12, 6))
+bars = plt.bar(keys, values_count, color=colors)
+
+for bar, val in zip(bars, values_count):
+    plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5,
+             f'{val}', ha='center', va='bottom', fontsize=8)
+
 plt.xlabel('Category')
-plt.ylabel('Counts')
-plt.title('How often this category was not found by oracle. * means seen')
-plt.xticks(rotation=90)
-plt.tight_layout()
-plt.savefig('fcclip/tests/found_by_oracle/missed.png')
+plt.ylabel('Missed Count')
+plt.title('Count of Missed Objects by Category (Seen vs Unseen)')
+plt.xticks(rotation=45, ha='right')
+plt.legend(handles=legend_elements)
 
-img_diff_counter_sorted = sorted(img_diff_counter.items(), key=lambda item: item[1])
-json.dump(img_diff_counter_sorted, open('fcclip/tests/found_by_oracle/img_diff_counter.json', 'w'), indent=4)
+plt.tight_layout()
+plt.savefig('fcclip/tests/found_by_oracle/missed_improved.png')
+plt.close()
