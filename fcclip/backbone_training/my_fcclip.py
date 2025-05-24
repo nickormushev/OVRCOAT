@@ -814,7 +814,7 @@ class MYFCCLIP(nn.Module):
 
         if not self.test_perfect_masks:
             mask_pred = mask_pred.sigmoid()
-            #mask_pred = mask_pred > 0.5 # Binarize the masks
+            mask_pred = mask_pred > 0.5 # Binarize the masks
 
         num_classes = len(self.test_metadata.stuff_classes)
         keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think
