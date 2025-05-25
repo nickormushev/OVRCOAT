@@ -45,7 +45,7 @@ TRAIN:
   WITH_FC_CLIP_MASKS: True # Use FC-Clip masks during training instead of gt ones
   SEG_HEAD: True # Requires WITH_FC_CLIP_MASKS. Enables tuning of seg head
   USE_TUNED_FEATURES_FOR_SEG_HEAD: False # Passes the tuned clip features to the segmentation head instead of the frozen ones
-  USE_PRETRAINED_SEG_HEAD_WEIGHTS: False # Load FC-Clip weights for the segmentation head at init
+  USE_PRETRAINED_SEG_HEAD_WEIGHTS: True # Load FC-Clip weights for the segmentation head at init
   DETACH_SEG_HEAD: True # Detach the segmentation head from the Clip backbone
 TEST:
   PERFECT_MASKS: False
@@ -56,4 +56,4 @@ DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: True
   NUM_WORKERS: 2
 DATASETS:
-  TEST: ("openvocab_ade20k_panoptic_train",)
+  TEST: ("openvocab_ade20k_panoptic_val",)

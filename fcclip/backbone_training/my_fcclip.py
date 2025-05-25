@@ -642,8 +642,8 @@ class MYFCCLIP(nn.Module):
         return mask_cls_results, mask_pred_results, similarities, oov_cls_probs
     
     def reclassify_void_masks(self, num_classes, pred_clfs, clip_preds, clip_similarities,
-                                give_things_pirority = True, clip_treshold=0.8,
-                                sim_threshold=26, softmax_temperature=6):
+                                give_things_pirority = True, clip_treshold=0,
+                                sim_threshold=26.5, softmax_temperature=6):
 
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
         clip_preds_np = clip_preds.cpu().detach().numpy()
