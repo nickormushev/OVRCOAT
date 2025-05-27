@@ -642,8 +642,8 @@ class MYFCCLIP(nn.Module):
         return mask_cls_results, mask_pred_results, similarities, oov_cls_probs
     
     def reclassify_void_masks(self, num_classes, pred_clfs, clip_preds, clip_similarities,
-                                give_things_pirority = True, clip_treshold=0,
-                                sim_threshold=26.5, softmax_temperature=6):
+                                give_things_priority = True, clip_treshold=0,
+                                sim_threshold=26.5, softmax_temperature=5):
 
         pred_clfs_np = pred_clfs.cpu().detach().numpy()
         clip_preds_np = clip_preds.cpu().detach().numpy()
@@ -662,8 +662,8 @@ class MYFCCLIP(nn.Module):
                 new_mask_cls[i, 0:num_classes - 1] = F.softmax(clip_similarities[i]/softmax_temperature, dim=-1).cpu().detach().numpy()
                 new_mask_cls[i, num_classes - 1] = 0
 
-                if is_thing and give_things_pirority:
-                    new_mask_cls[i, clip_category] += 0.1 # Gives priority to things.
+                if is_thing and give_things_priority:
+                    new_mask_cls[i, clip_category] += 0.2 # Gives priority to things.
 
         return torch.tensor(new_mask_cls, device=self.device)
 
@@ -698,12 +698,12 @@ class MYFCCLIP(nn.Module):
         # ImageList stores images in varying shapes by padding them to same size
         images = ImageList.from_tensors(images, self.size_divisibility)
 
-       # if not self.init_embedding:
-       #    model = build_model(self.cfg)
-       #    checkpointer = DetectionCheckpointer(model)
-       #    checkpointer.load(self.cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
-       #    self.void_embedding = model.void_embedding
-       #    self.init_embedding = True
+        #if not self.init_embedding:
+        #   model = build_model(self.cfg)
+        #   checkpointer = DetectionCheckpointer(model)
+        #   checkpointer.load(self.cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS)
+        #   self.void_embedding = model.void_embedding
+        #   self.init_embedding = True
 
         if not self.train_seg_head:
             self.sem_seg_head.eval()
@@ -814,6 +814,8 @@ class MYFCCLIP(nn.Module):
 
         if not self.test_perfect_masks:
             mask_pred = mask_pred.sigmoid()
+            
+        if self.reclassify_void_masks:
             mask_pred = mask_pred > 0.5 # Binarize the masks
 
         num_classes = len(self.test_metadata.stuff_classes)

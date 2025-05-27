@@ -38,7 +38,7 @@ class TestConfig:
         self.skip_seen_files = False
         self.use_extended_categories = False
         self.save_pan_predictions = True
-        self.use_colors = False
+        self.use_colors = True
 
         # TODO: Rename to run_tests
         # all of the below require run_tests to be true / use oracle
@@ -227,7 +227,7 @@ def create_open_vocab_dataset():
 
 def get_color_palette(num_colors):
     np.random.seed(42)  # For reproducibility
-    return np.random.randint(0, 255, size=(num_colors + 1, 3), dtype=np.uint8)
+    return np.random.randint(0, 255, size=(100 * num_colors + 1, 3), dtype=np.uint8)
 
 def get_segment_index_by_id(id, list):
     if id == 0:
@@ -255,7 +255,7 @@ def process_segment(mask, uid, si, segment_idx, text_mask):
         cv2.putText(text_mask, category_name , (centroid_x, centroid_y),
             cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), font_thickness, cv2.LINE_AA)
 
-def apply_color_palette(img, segmentation, palette, dict, alpha=0.5):
+def apply_color_palette(img, segmentation, palette, dict, alpha=0.7):
     if len(palette) == 0:
         return segmentation
     h, w = segmentation.shape
@@ -265,8 +265,11 @@ def apply_color_palette(img, segmentation, palette, dict, alpha=0.5):
     si = dict["segments_info"]
     for uid in unique_ids:
         mask = segmentation == uid
-        colored_mask[mask] = palette[uid % len(palette)]
         segment_idx = get_segment_index_by_id(uid, si)
+        if segment_idx == -1:
+            continue
+
+        colored_mask[mask] = ADE20k_COLORS[si[segment_idx]['category_id']]
         process_segment(mask, uid, si, segment_idx, text_mask)
         if uid != 0:
             si[segment_idx]['rgb2id'] = rgb2id(palette[uid % len(palette)].tolist())
@@ -289,7 +292,7 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations, te
     predictor.test_cfg = test_cfg
     predictor.gt_img_id = img_id
 
-    pred = predictor(img)
+    pred, gt_img, gt_ann = predictor(img)
 
     if not test_cfg.save_pan_predictions:
         return
@@ -304,13 +307,15 @@ def process_image(predictor, img_path, img_file, output_dir, pan_annotations, te
     pan_img_path = os.path.join(output_dir, img_id + ".png")
     pan_img = pred['panoptic_seg'][0].to("cpu").numpy()
 
+    gt_img = rgb2id(gt_img)
+
     if test_cfg.use_colors:
         # Using colors breaks the mapping from the color to the segments_info
         # This can be fixed but for now I just generated both greyscale and rgb options
 
         # Convert the panoptic segmentation to RGB format
-        palette = get_color_palette(len(pred["panoptic_seg"][1]))
-        pan_img, dict = apply_color_palette(img, pan_img, palette, dict)
+        palette = get_color_palette(len(gt_ann['segments_info']))
+        pan_img, dict = apply_color_palette(img, gt_img, palette, gt_ann)
 
     pan_annotations.append(dict)
     cv2.imwrite(pan_img_path, pan_img)
