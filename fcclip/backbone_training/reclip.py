@@ -489,7 +489,7 @@ class RECLIP(nn.Module):
         return torch.cat(pooled_features, dim=0)
     
     def calculate_dist_loss(self, clip_feature, frozen_clip_feature):
-        # Reshape clip_feature and frozen_clip_feature to [batch_size, num_objects, num_channels * height * width]
+        # Reshape clip_feature and frozen_clip_feature to [batch_size, num_channels * height * width]
         reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
         reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0],
                                                             frozen_clip_feature.shape[1], -1)
