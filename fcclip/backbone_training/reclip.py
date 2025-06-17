@@ -68,7 +68,7 @@ def linear_warmup(step, total_warmup_steps, final_value):
     return min(final_value, final_value * step / total_warmup_steps)
 
 @META_ARCH_REGISTRY.register()
-class MYFCCLIP(nn.Module):
+class RECLIP(nn.Module):
     """
     Main class for mask classification semantic segmentation architectures.
     """
@@ -344,7 +344,7 @@ class MYFCCLIP(nn.Module):
             void_embedding.requires_grad = False
 
         del model
-        cfg.MODEL.META_ARCHITECTURE = "MYFCCLIP"
+        cfg.MODEL.META_ARCHITECTURE = "RECLIP"
 
         return sem_seg_head, void_embedding
     @classmethod 
@@ -357,7 +357,7 @@ class MYFCCLIP(nn.Module):
         frozen_backbone = build_backbone(cfg)
         cfg.MODEL.BACKBONE.FREEZE = False
         if cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS:
-            sem_seg_head, void_embedding = MYFCCLIP.get_sem_seg_head(cfg)
+            sem_seg_head, void_embedding = RECLIP.get_sem_seg_head(cfg)
         else:
             sem_seg_head = build_sem_seg_head(cfg, backbone.output_shape())
             void_embedding = nn.Embedding(1, backbone.dim_latent)
@@ -376,8 +376,8 @@ class MYFCCLIP(nn.Module):
         if use_ma_loss:
             cfg.TRAIN.LOSSES.remove("ma_loss")
             
-        criterion = MYFCCLIP.get_criterion(cfg, sem_seg_head.num_classes)
-        MYFCCLIP.cfg = cfg
+        criterion = RECLIP.get_criterion(cfg, sem_seg_head.num_classes)
+        RECLIP.cfg = cfg
 
         return {
             "backbone": backbone,

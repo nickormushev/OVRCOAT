@@ -34,7 +34,7 @@ from .data.dataset_mappers.mask_former_semantic_dataset_mapper import (
 
 # models
 from .fcclip import FCCLIP
-from .backbone_training.my_fcclip import MYFCCLIP
+from .backbone_training.reclip import RECLIP
 from .test_time_augmentation import SemanticSegmentorWithTTA
 
 # evaluation
