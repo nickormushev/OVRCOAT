@@ -1,4 +1,4 @@
-# Re-CLIP: From Background to Foreground: Boosting Open-Vocabulary Panoptic Segmentation via Reclassification
+# Re-CLIP: Boosting Open-Vocabulary Panoptic Segmentation via Reclassification
 
 This repo contains the code for my master thesis in Open-Vocabulary Panoptic Segmentation
 
