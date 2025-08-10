@@ -13,6 +13,9 @@ tests/preds*
 
 datasets/coco/*
 datasets/cityscapes/*
+datasets/VOCdevkit/*
+datasets/pascal*
+datasets/mapillary_vistas*
 logs/*
 output/*
 fcclip_cocopan.pth
@@ -21,9 +24,14 @@ LR*
 
 TORCH*
 TRAIN*
+TUNE*
+EVAL*
+REDO*
+BEST_MODEL_TUNE_SEG_HEAD*
 ABLATION*
 *run_train.sh
 *run_generate_preds.sh
 *run_evaluation.sh
+*tfevents*
 
 dl_project*
