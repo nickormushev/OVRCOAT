@@ -78,6 +78,7 @@ class RECLIP(nn.Module):
         self,
         *,
         backbone: Backbone,
+        use_dist_loss: bool,
         frozen_backbone: Backbone,
         sem_seg_head: nn.Module,
         void_embedding: nn.Embedding,
@@ -185,10 +186,11 @@ class RECLIP(nn.Module):
         self.mask_pooling = MaskPooling()
         self.geometric_ensemble_alpha = geometric_ensemble_alpha
         self.geometric_ensemble_beta = geometric_ensemble_beta
-        self.ensemble_on_valid_mask = ensemble_on_valid_mask
-        
+        self.ensemble_on_valid_mask = ensemble_on_valid_mask 
+
         self.use_ma_loss = use_ma_loss
         self.ma_loss = MA_Loss()  # BCELoss BCEWithLogitsLoss SmoothL1Loss
+        self.use_dist_loss = use_dist_loss
 
         self.train_text_classifier = None
         self.test_text_classifier = None
@@ -347,15 +349,18 @@ class RECLIP(nn.Module):
         cfg.MODEL.META_ARCHITECTURE = "RECLIP"
 
         return sem_seg_head, void_embedding
+
     @classmethod 
     def from_config(cls, cfg): # Called by configurable wrapper before init to get arguments which it passes to init
         # This is the frozen CLIP backbone
 
         backbone = build_backbone(cfg)
         cfg.defrost()
+        old_freeze = cfg.MODEL.BACKBONE.FREEZE
         cfg.MODEL.BACKBONE.FREEZE = True
         frozen_backbone = build_backbone(cfg)
-        cfg.MODEL.BACKBONE.FREEZE = False
+        cfg.MODEL.BACKBONE.FREEZE = old_freeze
+
         if cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS:
             sem_seg_head, void_embedding = RECLIP.get_sem_seg_head(cfg)
         else:
@@ -381,6 +386,7 @@ class RECLIP(nn.Module):
 
         return {
             "backbone": backbone,
+            "use_dist_loss": not cfg.MODEL.BACKBONE.FREEZE, # If tuning backbone, use distillation loss
             "weight_dict": weight_dict,
             "reclassify_void": cfg.MODEL.RECLASSIFY_VOID,
             "frozen_backbone": frozen_backbone,
@@ -551,8 +557,11 @@ class RECLIP(nn.Module):
             losses = {"ranking_loss": ranking_loss} if losses is None else \
                      {**losses, "ranking_loss": ranking_loss}
 
-        dist_loss = self.calculate_dist_loss(clip_feature, frozen_clip_feature)
-        losses["dist_loss"] = dist_loss
+        if self.use_dist_loss:
+            dist_loss = self.calculate_dist_loss(clip_feature, frozen_clip_feature)
+            losses["dist_loss"] = dist_loss
+            #dist_loss = calculate_dist_loss(clip_feature, frozen_clip_feature, self.loss, self.iter, self.dist_warmup_iters, self.weight_dict)
+            #losses["dist_loss"] = dist_loss
 
         wandb.log(losses)
         return losses
