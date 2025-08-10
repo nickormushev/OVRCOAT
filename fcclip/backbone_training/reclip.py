@@ -26,6 +26,8 @@ from fcclip.modeling.criterion import SetCriterion
 from fcclip.modeling.matcher import HungarianMatcher
 
 from fcclip.backbone_training.mask_aware_loss import MA_Loss
+from fcclip.backbone_training.inference_utils import panoptic_inference, semantic_inference, instance_inference
+from fcclip.backbone_training.losses import calculate_dist_loss, calculate_ce_loss
 
 from fcclip.modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -50,22 +52,6 @@ OBJECT_COUNT = 0
 
 # ADE20K specific. Is number of classes - 1 otherwise
 VOID_CATEGORY_ID = 150
-
-def batched_cosine_similarity_loss(A, B):
-    A_normalized = F.normalize(A, p=2, dim=2) 
-    B_normalized = F.normalize(B, p=2, dim=2)
-    
-    cosine_sim = torch.sum(A_normalized * B_normalized, dim=2)  # (B, m)
-    
-    mean_cosine_sim = torch.mean(cosine_sim, dim=1)  # (B,)
-    
-    loss = 1 - torch.mean(mean_cosine_sim)  # Scalar loss
-    return loss
-
-def linear_warmup(step, total_warmup_steps, final_value):
-    if total_warmup_steps == 0:
-        return final_value
-    return min(final_value, final_value * step / total_warmup_steps)
 
 @META_ARCH_REGISTRY.register()
 class RECLIP(nn.Module):
@@ -487,50 +473,6 @@ class RECLIP(nn.Module):
         out_vocab_cls_probs = out_vocab_cls_results.softmax(-1)
 
         return out_vocab_cls_probs, mask_for_pooling, out_vocab_cls_results
-    
-    def get_pooled_features(self, clip_features):
-        pooled_features = []
-        for K in range(1,3):
-           pooled_features.append(F.avg_pool2d(clip_features, kernel_size=(K, K)))
-        return torch.cat(pooled_features, dim=0)
-    
-    def calculate_dist_loss(self, clip_feature, frozen_clip_feature):
-        # Reshape clip_feature and frozen_clip_feature to [batch_size, num_channels * height * width]
-        reshaped_clip_feat = clip_feature.view(clip_feature.shape[0], clip_feature.shape[1], -1)
-        reshaped_frozen_clip_feat = frozen_clip_feature.view(frozen_clip_feature.shape[0],
-                                                            frozen_clip_feature.shape[1], -1)
-
-        # Calculate the Gram matrices using batch matrix multiplication
-        gram_matrix_clip_feat = torch.bmm(reshaped_clip_feat, reshaped_clip_feat.transpose(1, 2))
-        gram_matrix_frozen_clip_feat = torch.bmm(reshaped_frozen_clip_feat, reshaped_frozen_clip_feat.transpose(1, 2))
-
-        dist_weight = linear_warmup(self.iter, self.dist_warmup_iters, self.weight_dict["dist_loss"])
-        self.iter += 1
-
-        if self.loss == "l2":
-            return dist_weight * F.mse_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
-        
-        if self.loss == "smoothl1":
-            return dist_weight * F.smooth_l1_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
-        
-        if self.loss == "maft":
-            pooled_clip_feature = self.get_pooled_features(clip_feature)
-            pooled_frozen_clip_feature = self.get_pooled_features(frozen_clip_feature)
-            return dist_weight * F.smooth_l1_loss(pooled_clip_feature, pooled_frozen_clip_feature)
-        
-        return dist_weight * batched_cosine_similarity_loss(gram_matrix_clip_feat, gram_matrix_frozen_clip_feat)
-        
-    
-    def calculate_ce_loss(self, masks, clip_feature, text_classifier, num_templates, gt_labels):
-        out_vocab_cls_results, _, _ = self.out_of_vocab_classification(masks, clip_feature, text_classifier, num_templates)
-        batch_size, num_masks, num_classes = out_vocab_cls_results.shape
-
-        # Reshape out_vocab_cls_results to [batch_size * num_objects, num_classes]
-        out_vocab_cls_results = out_vocab_cls_results.reshape(batch_size * num_masks, num_classes)
-
-        # Reshape gt_labels to [batch_size * num_objects]
-        gt_labels = gt_labels.reshape(batch_size * num_masks)
-        return F.cross_entropy(out_vocab_cls_results, gt_labels, reduction='mean')
 
     def train_with_generated_masks(self, targets, seg_head_features, clip_feature, text_classifier, num_templates, frozen_clip_feature):
         outputs = self.sem_seg_head(seg_head_features)
@@ -577,10 +519,11 @@ class RECLIP(nn.Module):
                 continue
 
             gt_masks = gt_masks.unsqueeze(0).float()
-            ce_loss += self.calculate_ce_loss(gt_masks, clip_feature[i:i+1], text_classifier, num_templates, gt_labels)
+            out_vocab_cls_results, _, _ = self.out_of_vocab_classification(gt_masks, clip_feature[i:i+1], text_classifier, num_templates)
+            ce_loss += calculate_ce_loss(out_vocab_cls_results, gt_labels)
 
         ce_loss = ce_loss / len(targets)
-        dist_loss = self.calculate_dist_loss(clip_feature, frozen_clip_feature)
+        dist_loss = calculate_dist_loss(clip_feature, frozen_clip_feature, self.loss, self.iter, self.dist_warmup_iters, self.weight_dict)
 
         losses = {
             "oov_ce_loss": ce_loss * self.weight_dict["ce_loss"],
@@ -670,9 +613,7 @@ class RECLIP(nn.Module):
             if pred_is_background and clip_prob >= clip_treshold and similarity > sim_threshold:
                 new_mask_cls[i, 0:num_classes - 1] = F.softmax(clip_similarities[i]/softmax_temperature, dim=-1).cpu().detach().numpy()
                 new_mask_cls[i, num_classes - 1] = 0
-
-                if is_thing and give_things_priority:
-                    new_mask_cls[i, clip_category] += 0.2 # Gives priority to things.
+                new_mask_cls[i, clip_category] += 0.2 if is_thing and give_things_priority else 0
 
         return torch.tensor(new_mask_cls, device=self.device)
 
@@ -721,77 +662,99 @@ class RECLIP(nn.Module):
         with torch.no_grad():
             frozen_features = self.frozen_backbone(images.tensor)
         
-        clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
-        frozen_clip_feature = frozen_features["clip_vis_dense"]
-
         text_classifier, num_templates = self.get_text_classifier()
         text_classifier = torch.cat([text_classifier, F.normalize(self.void_embedding.weight, dim=-1)], dim=0)
 
         if self.training:
-            targets = self.get_targets(batched_inputs, images)
-
-            if self.train_with_fc_clip_masks:
-                seg_head_features = self.get_seg_head_features(features, frozen_features, text_classifier, num_templates)
-                return self.train_with_generated_masks(targets, seg_head_features, clip_feature,
-                                                    text_classifier, num_templates, frozen_clip_feature)
-            else:
-                return self.train_with_gt_masks(targets, clip_feature, text_classifier,
-                                            num_templates, frozen_clip_feature)
+            return self.train_step(batched_inputs, images, features, frozen_features, text_classifier, num_templates)
         else:
-            with torch.no_grad():
-                if self.test_perfect_masks:
-                    targets = self.get_targets(batched_inputs, images)
-                    mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
+            return self.inference_step(batched_inputs, images, features, frozen_features, text_classifier, num_templates)
+        
+    def train_step(self, batched_inputs, images, features, frozen_features, text_classifier, num_templates):
+        targets = self.get_targets(batched_inputs, images)
+        clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
+        frozen_clip_feature = frozen_features["clip_vis_dense"]
+
+        if self.train_with_fc_clip_masks:
+            seg_head_features = self.get_seg_head_features(features, frozen_features, text_classifier, num_templates)
+            return self.train_with_generated_masks(targets, seg_head_features, clip_feature,
+                                                text_classifier, num_templates, frozen_clip_feature)
+        else:
+            return self.train_with_gt_masks(targets, clip_feature, text_classifier,
+                                        num_templates, frozen_clip_feature)
+    
+    def inference_step(self, batched_inputs, images, features, frozen_features,
+                       text_classifier, num_templates):
+
+        clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
+        with torch.no_grad():
+            if self.test_perfect_masks:
+                targets = self.get_targets(batched_inputs, images)
+                mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
-                    out_vocab_cls_probs, _, _ = self.out_of_vocab_classification(mask_pred_results,
-                                                                clip_feature, text_classifier, num_templates)
+                out_vocab_cls_probs, _, _ = self.out_of_vocab_classification(mask_pred_results,
+                                                            clip_feature, text_classifier, num_templates)
 
-                    mask_pred_results = mask_pred_results.to(self.device)
-                    mask_cls_results = out_vocab_cls_probs
-                else:
-                    mask_cls_results, mask_pred_results, similarities, out_vocab_cls_probs = self.test_with_imperfect_masks(clip_feature,
-                                            frozen_features, features, text_classifier,
-                                            num_templates, images)
+                mask_pred_results = mask_pred_results.to(self.device)
+                mask_cls_results = out_vocab_cls_probs
+            else:
+                mask_cls_results, mask_pred_results, similarities, out_vocab_cls_probs = self.test_with_imperfect_masks(clip_feature,
+                                        frozen_features, features, text_classifier,
+                                        num_templates, images)
 
-                processed_results = []
-                for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
-                    mask_cls_results, mask_pred_results, batched_inputs, images.image_sizes
-                ):
-                    height = input_per_image.get("height", image_size[0])
-                    width = input_per_image.get("width", image_size[1])
-                    processed_results.append({})
+            processed_results = []
+            for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
+                mask_cls_results, mask_pred_results, batched_inputs, images.image_sizes
+            ):
+                result = self.process_single_image(mask_cls_result, mask_pred_result, input_per_image, \
+                    image_size, out_vocab_cls_probs, similarities)
+                processed_results.append(result)
 
-                    if self.sem_seg_postprocess_before_inference:
-                        mask_pred_result = retry_if_cuda_oom(sem_seg_postprocess)( # Is literally just upsampling
-                            mask_pred_result, image_size, height, width
-                        )
-                        mask_cls_result = mask_cls_result.to(mask_pred_result)
+            return processed_results
 
-                    if self.test_with_void or self.test_with_fc_clip:
-                        mask_cls_result = F.softmax(mask_cls_result, dim=-1)
+    def process_single_image(self, mask_cls_result, mask_pred_result, input_per_image, image_size, out_vocab_cls_probs, similarities):
+        height = input_per_image.get("height", image_size[0])
+        width = input_per_image.get("width", image_size[1])
 
-                        if self.reclassify_void:
-                            num_classes = mask_cls_result.shape[1]
-                            mask_cls_result = self.reclassify_void_masks(num_classes, mask_cls_result, out_vocab_cls_probs[0], similarities[0])
-                    
-                    # semantic segmentation inference
-                    if self.semantic_on:
-                        r = retry_if_cuda_oom(self.semantic_inference)(mask_cls_result, mask_pred_result) # Multiplies class with mask results
-                        if not self.sem_seg_postprocess_before_inference:
-                            r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
-                        processed_results[-1]["sem_seg"] = r
+        if self.sem_seg_postprocess_before_inference:
+            mask_pred_result = retry_if_cuda_oom(sem_seg_postprocess)(
+                mask_pred_result, image_size, height, width
+            )
+            mask_cls_result = mask_cls_result.to(mask_pred_result)
 
-                    # panoptic segmentation inference
-                    if self.panoptic_on:
-                        panoptic_r = retry_if_cuda_oom(self.panoptic_inference)(mask_cls_result, mask_pred_result)
-                        processed_results[-1]["panoptic_seg"] = panoptic_r
+        if self.test_with_void or self.test_with_fc_clip:
+            mask_cls_result = F.softmax(mask_cls_result, dim=-1)
 
-                    # instance segmentation inference
-                    if self.instance_on:
-                        instance_r = retry_if_cuda_oom(self.instance_inference)(mask_cls_result, mask_pred_result)
-                        processed_results[-1]["instances"] = instance_r
+            if self.reclassify_void:
+                num_classes = mask_cls_result.shape[1]
+                mask_cls_result = self.reclassify_void_masks(num_classes, mask_cls_result, out_vocab_cls_probs[0], similarities[0])
+            
+        return self.perform_inference(mask_cls_result, mask_pred_result, image_size, height, width)
 
-                return processed_results
+    
+    def perform_inference(self, mask_cls_result, mask_pred_result, image_size, height, width):
+        result = {}
+        # Semantic segmentation inference
+        if self.semantic_on:
+            r = retry_if_cuda_oom(semantic_inference)(mask_cls_result, mask_pred_result,
+                                        self.test_perfect_masks, self.test_with_void, self.test_with_fc_clip)
+            if not self.sem_seg_postprocess_before_inference:
+                r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
+            result["sem_seg"] = r
+
+        # Panoptic segmentation inference
+        if self.panoptic_on:
+            panoptic_r = retry_if_cuda_oom(panoptic_inference)(mask_cls_result, mask_pred_result, self.test_perfect_masks,
+                       self.reclassify_void_masks, self.test_metadata, self.overlap_threshold, self.object_mask_threshold)
+            result["panoptic_seg"] = panoptic_r
+
+        # Instance segmentation inference
+        if self.instance_on:
+            instance_r = retry_if_cuda_oom(instance_inference)(mask_cls_result, mask_pred_result, self.test_topk_per_image,
+                        self.test_with_void, self.test_with_fc_clip, self.panoptic_on, self.test_metadata, self.device)
+            result["instances"] = instance_r
+
+        return result
 
     def prepare_targets(self, targets, images):
         h_pad, w_pad = images.tensor.shape[-2:]
@@ -808,121 +771,3 @@ class RECLIP(nn.Module):
                 }
             )
         return new_targets
-
-    def semantic_inference(self, mask_cls, mask_pred):
-        if not self.test_perfect_masks:
-            if self.test_with_void or self.test_with_fc_clip:
-                mask_cls = mask_cls[..., :-1]
-            mask_pred = mask_pred.sigmoid()
-
-        semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
-        return semseg
-
-    def panoptic_inference(self, mask_cls, mask_pred):
-        scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
-
-        if not self.test_perfect_masks:
-            mask_pred = mask_pred.sigmoid()
-            
-        if self.reclassify_void_masks:
-            mask_pred = mask_pred > 0.5 # Binarize the masks
-
-        num_classes = len(self.test_metadata.stuff_classes)
-        keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think
-        cur_scores = scores[keep]
-        cur_classes = labels[keep]
-        cur_masks = mask_pred[keep]
-        cur_mask_cls = mask_cls[keep]
-
-        cur_prob_masks = cur_scores.view(-1, 1, 1) * cur_masks # Each pixel in the mask has the value of the score. Think that masks are 0,1
-
-        h, w = cur_masks.shape[-2:]
-        panoptic_seg = torch.zeros((h, w), dtype=torch.int32, device=cur_masks.device)
-        segments_info = []
-
-        current_segment_id = 0
-
-        if cur_masks.shape[0] == 0:
-            # We didn't detect any mask :(
-            return panoptic_seg, segments_info
-        else:
-            # take argmax
-            cur_mask_ids = cur_prob_masks.argmax(0) # Gets the max score for the pixel. Actually the max index. Uses argmax
-            stuff_memory_list = {}
-            for k in range(cur_classes.shape[0]):
-                pred_class = cur_classes[k].item()
-                isthing = pred_class in self.test_metadata.thing_dataset_id_to_contiguous_id.values()
-                mask_area = (cur_mask_ids == k).sum().item()
-                original_area = (cur_masks[k] >= 0.5).sum().item()
-                mask = (cur_mask_ids == k) & (cur_masks[k] >= 0.5) # Takes pixels of mask but only ones we are sure of 
-
-                if mask_area > 0 and original_area > 0 and mask.sum().item() > 0:
-                    if mask_area / original_area < self.overlap_threshold: # The mask is covered by another
-                        continue
-
-                    # merge stuff regions
-                    if not isthing:
-                        if int(pred_class) in stuff_memory_list.keys():
-                            panoptic_seg[mask] = stuff_memory_list[int(pred_class)]
-                            continue
-                        else:
-                            stuff_memory_list[int(pred_class)] = current_segment_id + 1
-
-                    current_segment_id += 1
-                    panoptic_seg[mask] = current_segment_id
-
-                    segments_info.append(
-                        {
-                            "id": current_segment_id,
-                            "isthing": bool(isthing),
-                            "category_id": int(pred_class),
-                        }
-                    )
-
-            return panoptic_seg, segments_info
-
-    def instance_inference(self, mask_cls, mask_pred):
-        # mask_pred is already processed to have the same shape as original input
-        image_size = mask_pred.shape[-2:]
-
-        # [Q, K]
-        scores = mask_cls.to(self.device)
-
-        if self.test_with_void or self.test_with_fc_clip:
-            scores = scores[:, :-1]
-
-        # if this is panoptic segmentation
-        if self.panoptic_on:
-            num_classes = len(self.test_metadata.stuff_classes)
-        else:
-            num_classes = len(self.test_metadata.thing_classes)
-        labels = torch.arange(num_classes, device=self.device).unsqueeze(0).repeat(mask_pred.shape[0], 1).flatten(0, 1)
-        # scores_per_image, topk_indices = scores.flatten(0, 1).topk(self.num_queries, sorted=False)
-        scores_per_image, topk_indices = scores.flatten(0, 1).topk(self.test_topk_per_image, sorted=False)
-        topk_indices.to(self.device)
-        scores_per_image.to(self.device)
-        labels_per_image = labels[topk_indices]
-
-        topk_indices = topk_indices // num_classes
-        # mask_pred = mask_pred.unsqueeze(1).repeat(1, self.sem_seg_head.num_classes, 1).flatten(0, 1)
-        mask_pred = mask_pred[topk_indices].to(self.device)
-
-        # if this is panoptic segmentation, we only keep the "thing" classes
-        if self.panoptic_on:
-            keep = torch.zeros_like(labels_per_image).bool().to(self.device)
-            for i, lab in enumerate(labels_per_image):
-                keep[i] = lab in self.test_metadata.thing_dataset_id_to_contiguous_id.values()
-
-            scores_per_image = scores_per_image[keep]
-            labels_per_image = labels_per_image[keep]
-            mask_pred = mask_pred[keep]
-
-        result = Instances(image_size)
-        result.pred_masks = (mask_pred > 0).float()
-        result.pred_boxes = Boxes(torch.zeros(mask_pred.size(0), 4))
-
-        # calculate average mask prob
-        mask_scores_per_image = (mask_pred.flatten(1) * result.pred_masks.flatten(1)).sum(1) / (result.pred_masks.flatten(1).sum(1) + 1e-6)
-        result.scores = scores_per_image * mask_scores_per_image
-        result.pred_classes = labels_per_image
-        return result
