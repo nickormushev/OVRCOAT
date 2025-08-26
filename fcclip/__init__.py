@@ -39,4 +39,4 @@ from .test_time_augmentation import SemanticSegmentorWithTTA
 
 # evaluation
 from .evaluation.instance_evaluation import InstanceSegEvaluator
-from .evaluation.panoptic_evaluation import COCOPanopticWandbEvaluator
+from .evaluation.panoptic_evaluation import COCOPanopticEvaluator
