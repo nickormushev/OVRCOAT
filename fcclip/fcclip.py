@@ -33,6 +33,7 @@ from .modeling.matcher import HungarianMatcher
 import cv2
 from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES, ADE20k_COLORS
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
+from fcclip.backbone_training.reclassify_void import reclassify_void_masks
 
 from .modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -784,33 +785,6 @@ class FCCLIP(nn.Module):
         
         output_path='./tests/void_histogram_data_3.csv'
         df.to_csv(output_path, mode='a', header=not os.path.exists(output_path))
-    
-    def reclassify_void_masks(self, num_classes, pred_clfs, clip_preds, clip_similarities,
-                                use_things = False, clip_treshold=0.9,
-                                sim_threshold=22, softmax_temperature=7):
-
-        pred_clfs_np = F.softmax(pred_clfs, dim=-1).cpu().detach().numpy()
-        clip_preds_np = clip_preds.cpu().detach().numpy()
-        new_mask_cls = pred_clfs_np
-
-        for i in range(pred_clfs_np.shape[0]):
-            pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
-            clip_category = np.argmax(clip_preds_np[i])
-            clip_prob = np.max(clip_preds_np[i])
-            similarity = clip_similarities[i, clip_category]
-
-            things = self.test_metadata.thing_classes
-            clip_cat_name = ADE20K_150_CATEGORIES[clip_category]['name']
-            is_thing = clip_cat_name in things
-            
-            thing_check = is_thing if use_things else True
-
-            if pred_is_background and thing_check and clip_prob >= clip_treshold and similarity > sim_threshold:
-                new_mask_cls[i, 0:num_classes - 1] = F.softmax(clip_similarities[i]/softmax_temperature, dim=-1).cpu().detach().numpy()
-                new_mask_cls[i, num_classes - 1] = 0
-
-        return torch.tensor(new_mask_cls, device=self.device)
-
 
     def forward(self, batched_inputs):
         """
@@ -937,7 +911,7 @@ class FCCLIP(nn.Module):
                 align_corners=False,
             )
 
-         #   del outputs
+            del outputs
 
             processed_results = []
             for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
@@ -996,8 +970,11 @@ class FCCLIP(nn.Module):
                                                                                  mask_cls_result, out_vocab_cls_probs[0], gt_img, gt_ann)
 
                 
-                if self.reclassify_void and self.test_cfg is None:
-                    mask_cls_result = self.reclassify_void_masks(num_classes, mask_cls_result, out_vocab_cls_probs[0], out_vocab_cls_results[0])
+                if self.reclassify_void:
+                    mask_cls_result = F.softmax(mask_cls_result, dim=-1)
+                    mask_cls_result = reclassify_void_masks(num_classes, mask_cls_result,
+                                                            out_vocab_cls_probs[0], out_vocab_cls_results[0],
+                                                            self.test_metadata.thing_dataset_id_to_contiguous_id, self.device)
                     
 
 
@@ -1054,7 +1031,7 @@ class FCCLIP(nn.Module):
             scores, labels = F.softmax(mask_cls, dim=-1).max(-1) # For each pixel, get the class with the highest score
 
         mask_pred = mask_pred.sigmoid()
-        if self.reclassify_void or (self.test_cfg is not None and self.test_cfg.use_clip_oracle):
+        if self.reclassify_void:
             mask_pred = (mask_pred > 0.5)
 
         num_classes = len(self.test_metadata.stuff_classes)

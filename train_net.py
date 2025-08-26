@@ -61,7 +61,7 @@ from detectron2.utils.logger import setup_logger
 from fcclip import (
     COCOInstanceNewBaselineDatasetMapper,
     COCOPanopticNewBaselineDatasetMapper,
-    COCOPanopticWandbEvaluator,
+    COCOPanopticEvaluator,
     InstanceSegEvaluator,
     MaskFormerInstanceDatasetMapper,
     MaskFormerPanopticDatasetMapper,
@@ -113,7 +113,7 @@ class Trainer(DefaultTrainer):
             "mapillary_vistas_panoptic_seg",
         ]:
             if cfg.MODEL.MASK_FORMER.TEST.PANOPTIC_ON:
-                evaluator_list.append(COCOPanopticWandbEvaluator(dataset_name, output_folder))
+                evaluator_list.append(COCOPanopticEvaluator(dataset_name, output_folder))
         # COCO
         if evaluator_type == "coco_panoptic_seg" and cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON:
             evaluator_list.append(COCOEvaluator(dataset_name, output_dir=output_folder))
@@ -162,21 +162,21 @@ class Trainer(DefaultTrainer):
             return evaluator_list[0]
         return DatasetEvaluators(evaluator_list)
 
-    @classmethod
-    def build_test_loader(cls, cfg, dataset_name):
-        """
-        Returns:
-            iterable
+    #@classmethod
+    #def build_test_loader(cls, cfg, dataset_name):
+    #    """
+    #    Returns:
+    #        iterable
 
-        It now calls :func:`detectron2.data.build_detection_test_loader`.
-        Overwrite it if you'd like a different data loader.
-        """
+    #    It now calls :func:`detectron2.data.build_detection_test_loader`.
+    #    Overwrite it if you'd like a different data loader.
+    #    """
 
-        mapper = None
-        #if dataset_name == 'openvocab_ade20k_panoptic_val':
-        mapper = MaskFormerPanopticDatasetMapper(cfg, True, random_flip=False)
+    #    mapper = None
+    #    #if dataset_name == 'openvocab_ade20k_panoptic_val':
+    #    mapper = MaskFormerPanopticDatasetMapper(cfg, True, random_flip=False)
 
-        return build_detection_test_loader(cfg, dataset_name, mapper=mapper)
+    #    return build_detection_test_loader(cfg, dataset_name, mapper=mapper)
 
     @classmethod
     def build_train_loader(cls, cfg):
@@ -397,7 +397,6 @@ def main(args):
 
         if args.single_model:
             res = run_eval(cfg, model, cfg.MODEL.WEIGHTS, args)
-            wandb.log(add_sufix_to_keys(res['panoptic_seg'], args.metric_suffix))
         else:
             files = sorted(os.listdir(cfg.OUTPUT_DIR))
             for file in files:
@@ -416,7 +415,20 @@ def main(args):
         return res
 
     trainer = Trainer(cfg)
+
     trainer.resume_or_load(resume=args.resume)
+
+    #checkpoint = torch.load(cfg.MODEL.WEIGHTS, map_location="cpu")
+    #state_dict = checkpoint["model"]
+    #backbone_state_dict = {
+    #    k.replace("backbone.", ""): v
+    #    for k, v in state_dict.items()
+    #    if k.startswith("backbone.")
+    #}
+    #trainer.model.module.backbone.load_state_dict(backbone_state_dict)
+    #for g in trainer.optimizer.param_groups:
+    #    g['lr'] = 1e-7
+
     return trainer.train()
 
 

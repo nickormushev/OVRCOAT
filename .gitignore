@@ -23,6 +23,7 @@ wandb/*
 LR*
 
 TORCH*
+TEST*
 TRAIN*
 TUNE*
 EVAL*

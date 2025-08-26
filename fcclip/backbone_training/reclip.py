@@ -28,6 +28,7 @@ from fcclip.modeling.matcher import HungarianMatcher
 from fcclip.backbone_training.mask_aware_loss import MA_Loss
 from fcclip.backbone_training.inference_utils import panoptic_inference, semantic_inference, instance_inference
 from fcclip.backbone_training.losses import calculate_dist_loss, calculate_ce_loss
+from fcclip.backbone_training.reclassify_void import reclassify_void_masks
 
 from fcclip.modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -446,13 +447,9 @@ class RECLIP(nn.Module):
         )
 
         cls_results = cls_logits_seen + cls_logits_unseen # Combine predictions
-
-        is_void_prob = F.softmax(mask_cls_results, dim=-1)[..., -1:]
         cls_prob_no_void = cls_results.softmax(-1)
-        mask_cls_probs = torch.cat([
-            cls_prob_no_void * (1.0 - is_void_prob),
-            is_void_prob], dim=-1)
-        mask_cls_results = torch.log(mask_cls_probs + 1e-8)
+
+        mask_cls_results = self.add_void_probability(cls_prob_no_void, mask_cls_results)
     
         return mask_cls_results
 
@@ -554,6 +551,23 @@ class RECLIP(nn.Module):
             return self.prepare_targets(gt_instances, images)
 
         return None
+    
+    def add_void_probability(self, cls_results, mask2former_cls_res):
+        is_void_prob = F.softmax(mask2former_cls_res, dim=-1)[..., -1:]
+        mask_cls_probs = torch.cat([
+            cls_results * (1.0 - is_void_prob),
+            is_void_prob], dim=-1)
+        return torch.log(mask_cls_probs + 1e-8)
+    
+    def get_mask_cls_results(self, mask_2_former_outputs, oov_cls_probs, mask_for_pooling):
+        assert not (self.test_with_fc_clip and self.test_with_void), "You cannot use void and fc-clip at the same time"
+        if self.test_with_fc_clip:
+            return self.ensemble_classifications(mask_2_former_outputs["pred_logits"],
+                                            oov_cls_probs, mask_for_pooling)
+        elif self.test_with_void:
+            return self.add_void_probability(oov_cls_probs,
+                                        mask_2_former_outputs["pred_logits"])
+        return oov_cls_probs
 
     def test_with_imperfect_masks(self, clip_feature, frozen_features,
                                  features, text_classifier, num_templates, images):
@@ -566,23 +580,7 @@ class RECLIP(nn.Module):
         oov_cls_probs, mask_for_pooling, similarities = self.out_of_vocab_classification(mask_pred_results,
                                         clip_feature, text_classifier, num_templates)
 
-        self.clip_preds = oov_cls_probs
-        assert not (self.test_with_fc_clip and self.test_with_void), "You cannot use void and fc-clip at the same time"
-        if self.test_with_fc_clip:
-            mask_cls_results = self.ensemble_classifications(mask_2_former_outputs["pred_logits"],
-                                                    oov_cls_probs, mask_for_pooling)
-        else:
-            mask_cls_results = oov_cls_probs
-
-            # TODO: Set this from config only for evaluation of some models
-            # Or retrain those models
-            if self.test_with_void:
-                clip_res = mask_2_former_outputs["pred_logits"]
-                is_void_prob = F.softmax(clip_res, dim=-1)[..., -1:]
-                mask_cls_probs = torch.cat([
-                    mask_cls_results * (1.0 - is_void_prob),
-                    is_void_prob], dim=-1)
-                mask_cls_results = torch.log(mask_cls_probs + 1e-8)
+        mask_cls_results = self.get_mask_cls_results(mask_2_former_outputs, oov_cls_probs, mask_for_pooling)
 
         mask_pred_results = F.interpolate(
             mask_pred_results,
@@ -593,30 +591,6 @@ class RECLIP(nn.Module):
 
         return mask_cls_results, mask_pred_results, similarities, oov_cls_probs
     
-    def reclassify_void_masks(self, num_classes, pred_clfs, clip_preds, clip_similarities,
-                                give_things_priority = True, clip_treshold=0,
-                                sim_threshold=26.5, softmax_temperature=5):
-
-        pred_clfs_np = pred_clfs.cpu().detach().numpy()
-        clip_preds_np = clip_preds.cpu().detach().numpy()
-        new_mask_cls = pred_clfs_np
-
-        for i in range(pred_clfs_np.shape[0]): 
-            pred_category = np.argmax(pred_clfs_np[i])
-            pred_is_background = pred_category == (num_classes - 1)
-            clip_category = np.argmax(clip_preds_np[i])
-            clip_prob = np.max(clip_preds_np[i])
-            similarity = clip_similarities[i, clip_category]
-
-            is_thing = clip_category in self.test_metadata.thing_dataset_id_to_contiguous_id.values()
-
-            if pred_is_background and clip_prob >= clip_treshold and similarity > sim_threshold:
-                new_mask_cls[i, 0:num_classes - 1] = F.softmax(clip_similarities[i]/softmax_temperature, dim=-1).cpu().detach().numpy()
-                new_mask_cls[i, num_classes - 1] = 0
-                new_mask_cls[i, clip_category] += 0.2 if is_thing and give_things_priority else 0
-
-        return torch.tensor(new_mask_cls, device=self.device)
-
     def forward(self, batched_inputs):
         """
         Args:
@@ -667,8 +641,8 @@ class RECLIP(nn.Module):
 
         if self.training:
             return self.train_step(batched_inputs, images, features, frozen_features, text_classifier, num_templates)
-        else:
-            return self.inference_step(batched_inputs, images, features, frozen_features, text_classifier, num_templates)
+
+        return self.inference_step(batched_inputs, images, features, frozen_features, text_classifier, num_templates)
         
     def train_step(self, batched_inputs, images, features, frozen_features, text_classifier, num_templates):
         targets = self.get_targets(batched_inputs, images)
@@ -679,9 +653,9 @@ class RECLIP(nn.Module):
             seg_head_features = self.get_seg_head_features(features, frozen_features, text_classifier, num_templates)
             return self.train_with_generated_masks(targets, seg_head_features, clip_feature,
                                                 text_classifier, num_templates, frozen_clip_feature)
-        else:
-            return self.train_with_gt_masks(targets, clip_feature, text_classifier,
-                                        num_templates, frozen_clip_feature)
+
+        return self.train_with_gt_masks(targets, clip_feature, text_classifier,
+                                    num_templates, frozen_clip_feature)
     
     def inference_step(self, batched_inputs, images, features, frozen_features,
                        text_classifier, num_templates):
@@ -727,7 +701,9 @@ class RECLIP(nn.Module):
 
             if self.reclassify_void:
                 num_classes = mask_cls_result.shape[1]
-                mask_cls_result = self.reclassify_void_masks(num_classes, mask_cls_result, out_vocab_cls_probs[0], similarities[0])
+                mask_cls_result = reclassify_void_masks(num_classes, mask_cls_result,
+                                                        out_vocab_cls_probs[0], similarities[0],
+                                                        self.test_metadata.thing_dataset_id_to_contiguous_id, self.device)
             
         return self.perform_inference(mask_cls_result, mask_pred_result, image_size, height, width)
 
@@ -745,7 +721,7 @@ class RECLIP(nn.Module):
         # Panoptic segmentation inference
         if self.panoptic_on:
             panoptic_r = retry_if_cuda_oom(panoptic_inference)(mask_cls_result, mask_pred_result, self.test_perfect_masks,
-                       self.reclassify_void_masks, self.test_metadata, self.overlap_threshold, self.object_mask_threshold)
+                       self.reclassify_void, self.test_metadata, self.overlap_threshold, self.object_mask_threshold)
             result["panoptic_seg"] = panoptic_r
 
         # Instance segmentation inference
