@@ -103,8 +103,8 @@ class MaskFormerPanopticDatasetMapper(MaskFormerSemanticDatasetMapper):
 
         aug_input = T.AugInput(image, sem_seg=sem_seg_gt)
         # Remove RandomFlip when using the oracle
-        if not self.random_flip:
-            self.tfm_gens = self.tfm_gens[:1]
+        #if not self.random_flip:
+        #    self.tfm_gens = self.tfm_gens[:1]
 
         aug_input, transforms = T.apply_transform_gens(self.tfm_gens, aug_input)
         image = aug_input.image
