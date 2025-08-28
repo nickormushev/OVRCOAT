@@ -449,7 +449,7 @@ class RECLIP(nn.Module):
         cls_results = cls_logits_seen + cls_logits_unseen # Combine predictions
         cls_prob_no_void = cls_results.softmax(-1)
 
-        mask_cls_results = self.add_void_probability(cls_prob_no_void, mask_cls_results)
+        mask_cls_results = self.add_void_probability(cls_prob_no_void, mask_cls_results, out_vocab_cls_probs)
     
         return mask_cls_results
 
@@ -552,8 +552,11 @@ class RECLIP(nn.Module):
 
         return None
     
-    def add_void_probability(self, cls_results, mask2former_cls_res):
+    def add_void_probability(self, cls_results, mask2former_cls_res, out_vocab_cls_probs):
         is_void_prob = F.softmax(mask2former_cls_res, dim=-1)[..., -1:]
+        max_clip_prob, _ = out_vocab_cls_probs.max(-1, keepdim=True)
+        weight = 0.5
+        is_void_prob = is_void_prob * (1 - weight * max_clip_prob)
         mask_cls_probs = torch.cat([
             cls_results * (1.0 - is_void_prob),
             is_void_prob], dim=-1)
