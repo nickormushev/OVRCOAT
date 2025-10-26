@@ -28,7 +28,6 @@ from fcclip.modeling.matcher import HungarianMatcher
 from fcclip.backbone_training.mask_aware_loss import MA_Loss
 from fcclip.backbone_training.inference_utils import panoptic_inference, semantic_inference, instance_inference
 from fcclip.backbone_training.losses import calculate_dist_loss, calculate_ce_loss
-from fcclip.backbone_training.reclassify_void import reclassify_void_masks
 
 from fcclip.modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -469,7 +468,7 @@ class RECLIP(nn.Module):
         out_vocab_cls_results = out_vocab_cls_results[..., :-1]
         out_vocab_cls_probs = out_vocab_cls_results.softmax(-1)
 
-        return out_vocab_cls_probs, mask_for_pooling, out_vocab_cls_results
+        return out_vocab_cls_probs, mask_for_pooling
 
     def train_with_generated_masks(self, targets, seg_head_features, clip_feature, text_classifier, num_templates, frozen_clip_feature):
         outputs = self.sem_seg_head(seg_head_features)
@@ -477,7 +476,7 @@ class RECLIP(nn.Module):
         if self.detach_seg_head:
             pred_masks = pred_masks.detach()
 
-        oov_cls_res, _, _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
+        oov_cls_res, _ = self.out_of_vocab_classification(pred_masks, clip_feature, text_classifier, num_templates)
         outputs["oov_cls_res"] = oov_cls_res
 
         # FC-CLIP criterion extended with oov_ce loss
@@ -497,10 +496,8 @@ class RECLIP(nn.Module):
                      {**losses, "ranking_loss": ranking_loss}
 
         if self.use_dist_loss:
-            dist_loss = self.calculate_dist_loss(clip_feature, frozen_clip_feature)
+            dist_loss = calculate_dist_loss(clip_feature, frozen_clip_feature, self.loss, self.iter, self.dist_warmup_iters, self.weight_dict)
             losses["dist_loss"] = dist_loss
-            #dist_loss = calculate_dist_loss(clip_feature, frozen_clip_feature, self.loss, self.iter, self.dist_warmup_iters, self.weight_dict)
-            #losses["dist_loss"] = dist_loss
 
         wandb.log(losses)
         return losses
@@ -516,7 +513,7 @@ class RECLIP(nn.Module):
                 continue
 
             gt_masks = gt_masks.unsqueeze(0).float()
-            out_vocab_cls_results, _, _ = self.out_of_vocab_classification(gt_masks, clip_feature[i:i+1], text_classifier, num_templates)
+            out_vocab_cls_results, _ = self.out_of_vocab_classification(gt_masks, clip_feature[i:i+1], text_classifier, num_templates)
             ce_loss += calculate_ce_loss(out_vocab_cls_results, gt_labels)
 
         ce_loss = ce_loss / len(targets)
@@ -580,7 +577,7 @@ class RECLIP(nn.Module):
         mask_2_former_outputs = self.sem_seg_head(seg_head_features)
 
         mask_pred_results = mask_2_former_outputs["pred_masks"]
-        oov_cls_probs, mask_for_pooling, similarities = self.out_of_vocab_classification(mask_pred_results,
+        oov_cls_probs, mask_for_pooling = self.out_of_vocab_classification(mask_pred_results,
                                         clip_feature, text_classifier, num_templates)
 
         mask_cls_results = self.get_mask_cls_results(mask_2_former_outputs, oov_cls_probs, mask_for_pooling)
@@ -592,7 +589,7 @@ class RECLIP(nn.Module):
             align_corners=False,
         )
 
-        return mask_cls_results, mask_pred_results, similarities, oov_cls_probs
+        return mask_cls_results, mask_pred_results
     
     def forward(self, batched_inputs):
         """
@@ -669,13 +666,13 @@ class RECLIP(nn.Module):
                 targets = self.get_targets(batched_inputs, images)
                 mask_pred_results = targets[0]['masks'].unsqueeze(0).float()
             
-                out_vocab_cls_probs, _, _ = self.out_of_vocab_classification(mask_pred_results,
+                out_vocab_cls_probs, _ = self.out_of_vocab_classification(mask_pred_results,
                                                             clip_feature, text_classifier, num_templates)
 
                 mask_pred_results = mask_pred_results.to(self.device)
                 mask_cls_results = out_vocab_cls_probs
             else:
-                mask_cls_results, mask_pred_results, similarities, out_vocab_cls_probs = self.test_with_imperfect_masks(clip_feature,
+                mask_cls_results, mask_pred_results = self.test_with_imperfect_masks(clip_feature,
                                         frozen_features, features, text_classifier,
                                         num_templates, images)
 
@@ -683,13 +680,14 @@ class RECLIP(nn.Module):
             for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
                 mask_cls_results, mask_pred_results, batched_inputs, images.image_sizes
             ):
+                torch.cuda.empty_cache()
                 result = self.process_single_image(mask_cls_result, mask_pred_result, input_per_image, \
-                    image_size, out_vocab_cls_probs, similarities)
+                    image_size)
                 processed_results.append(result)
 
             return processed_results
 
-    def process_single_image(self, mask_cls_result, mask_pred_result, input_per_image, image_size, out_vocab_cls_probs, similarities):
+    def process_single_image(self, mask_cls_result, mask_pred_result, input_per_image, image_size):
         height = input_per_image.get("height", image_size[0])
         width = input_per_image.get("width", image_size[1])
 
@@ -701,12 +699,6 @@ class RECLIP(nn.Module):
 
         if self.test_with_void or self.test_with_fc_clip:
             mask_cls_result = F.softmax(mask_cls_result, dim=-1)
-
-            if self.reclassify_void:
-                num_classes = mask_cls_result.shape[1]
-                mask_cls_result = reclassify_void_masks(num_classes, mask_cls_result,
-                                                        out_vocab_cls_probs[0], similarities[0],
-                                                        self.test_metadata.thing_dataset_id_to_contiguous_id, self.device)
             
         return self.perform_inference(mask_cls_result, mask_pred_result, image_size, height, width)
 

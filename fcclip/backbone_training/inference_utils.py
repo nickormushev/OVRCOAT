@@ -16,9 +16,6 @@ def panoptic_inference(mask_cls, mask_pred, test_perfect_masks,
 
     if not test_perfect_masks:
         mask_pred = mask_pred.sigmoid()
-        
-    if reclassify_void:
-        mask_pred = mask_pred > 0.5 # Binarize the masks
 
     num_classes = len(test_metadata.stuff_classes)
     keep = labels.ne(num_classes) & (scores > object_mask_threshold) # Thresholding I guess. First part removes background I think

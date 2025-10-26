@@ -103,7 +103,6 @@ class CLIP(Backbone):
             param.requires_grad = False
         
         # For ConvNeXt, freeze the stem and the first 4 stages
-        # TODO: Make sure this is correct for ResNet or if it has an equivalent
         for name, param in self.named_parameters():
             if 'clip_model.visual.trunk.stem' in name:
                 param.requires_grad = True
