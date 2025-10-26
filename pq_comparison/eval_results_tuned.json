@@ -1,0 +1,1607 @@
+{
+  "sem_seg": {
+    "mIoU": 34.17221718803662,
+    "fwIoU": 59.86841065647045,
+    "IoU-wall,walls,brick wall,stone wall,interior wall": 65.07230509165444,
+    "BoundaryIoU-wall,walls,brick wall,stone wall,interior wall": 73.42264792362461,
+    "min(IoU, B-Iou)-wall,walls,brick wall,stone wall,interior wall": 65.07230509165444,
+    "IoU-building,buildings,edifice,edifices": 65.82334944499671,
+    "BoundaryIoU-building,buildings,edifice,edifices": 9.20129903417187,
+    "min(IoU, B-Iou)-building,buildings,edifice,edifices": 9.20129903417187,
+    "IoU-sky,clouds": 92.6930887103844,
+    "BoundaryIoU-sky,clouds": 0.0,
+    "min(IoU, B-Iou)-sky,clouds": 0.0,
+    "IoU-floor,flooring": 54.47834363572791,
+    "BoundaryIoU-floor,flooring": 0.0,
+    "min(IoU, B-Iou)-floor,flooring": 0.0,
+    "IoU-tree,trees": 67.270889455409,
+    "BoundaryIoU-tree,trees": 0.0,
+    "min(IoU, B-Iou)-tree,trees": 0.0,
+    "IoU-ceiling": 78.18351915260658,
+    "BoundaryIoU-ceiling": 0.0,
+    "min(IoU, B-Iou)-ceiling": 0.0,
+    "IoU-road,route,street,roads,streets,routes": 67.63813512156943,
+    "BoundaryIoU-road,route,street,roads,streets,routes": 0.0,
+    "min(IoU, B-Iou)-road,route,street,roads,streets,routes": 0.0,
+    "IoU-bed,beds": 82.00626468187944,
+    "BoundaryIoU-bed,beds": 0.0,
+    "min(IoU, B-Iou)-bed,beds": 0.0,
+    "IoU-windowpane,window,windows": 49.5911101006944,
+    "BoundaryIoU-windowpane,window,windows": 0.0,
+    "min(IoU, B-Iou)-windowpane,window,windows": 0.0,
+    "IoU-grass,grass field": 65.66677643917347,
+    "BoundaryIoU-grass,grass field": 0.0,
+    "min(IoU, B-Iou)-grass,grass field": 0.0,
+    "IoU-cabinet,cabinets,wall mounted cabine": 60.59817390224329,
+    "BoundaryIoU-cabinet,cabinets,wall mounted cabine": 0.0,
+    "min(IoU, B-Iou)-cabinet,cabinets,wall mounted cabine": 0.0,
+    "IoU-sidewalk,pavement": 42.746037918383564,
+    "BoundaryIoU-sidewalk,pavement": 0.0,
+    "min(IoU, B-Iou)-sidewalk,pavement": 0.0,
+    "IoU-person,child,girl,boy,woman,man,people,children,girls,boys,women,men": 86.01489196227443,
+    "BoundaryIoU-person,child,girl,boy,woman,man,people,children,girls,boys,women,men": 0.0,
+    "min(IoU, B-Iou)-person,child,girl,boy,woman,man,people,children,girls,boys,women,men": 0.0,
+    "IoU-earth,ground": 18.21328330199049,
+    "BoundaryIoU-earth,ground": 0.0,
+    "min(IoU, B-Iou)-earth,ground": 0.0,
+    "IoU-door,double door,doors": 36.77714685369278,
+    "BoundaryIoU-door,double door,doors": 0.0,
+    "min(IoU, B-Iou)-door,double door,doors": 0.0,
+    "IoU-table,tables,tablecloth": 50.95251227469849,
+    "BoundaryIoU-table,tables,tablecloth": 0.0,
+    "min(IoU, B-Iou)-table,tables,tablecloth": 0.0,
+    "IoU-mountain,mount,mountains": 36.73951966569612,
+    "BoundaryIoU-mountain,mount,mountains": 0.0,
+    "min(IoU, B-Iou)-mountain,mount,mountains": 0.0,
+    "IoU-plant,flora,plant life,plants,bushes": 36.27308233503207,
+    "BoundaryIoU-plant,flora,plant life,plants,bushes": 0.0,
+    "min(IoU, B-Iou)-plant,flora,plant life,plants,bushes": 0.0,
+    "IoU-curtain,drape,drapery,mantle,pall": 70.52514906264604,
+    "BoundaryIoU-curtain,drape,drapery,mantle,pall": 0.0,
+    "min(IoU, B-Iou)-curtain,drape,drapery,mantle,pall": 0.0,
+    "IoU-chair,chairs": 53.78944887495523,
+    "BoundaryIoU-chair,chairs": 0.0,
+    "min(IoU, B-Iou)-chair,chairs": 0.0,
+    "IoU-car,automobile,cars": 83.55919462740317,
+    "BoundaryIoU-car,automobile,cars": 0.0,
+    "min(IoU, B-Iou)-car,automobile,cars": 0.0,
+    "IoU-water": 20.12258082690483,
+    "BoundaryIoU-water": 0.0,
+    "min(IoU, B-Iou)-water": 0.0,
+    "IoU-painting,picture,paintings,pictures,wallart,framed canvas": 25.51206289730295,
+    "BoundaryIoU-painting,picture,paintings,pictures,wallart,framed canvas": 0.0,
+    "min(IoU, B-Iou)-painting,picture,paintings,pictures,wallart,framed canvas": 0.0,
+    "IoU-sofa,couch,sofas,couches": 68.21135647601864,
+    "BoundaryIoU-sofa,couch,sofas,couches": 0.0,
+    "min(IoU, B-Iou)-sofa,couch,sofas,couches": 0.0,
+    "IoU-shelf,shelves": 37.43742661287078,
+    "BoundaryIoU-shelf,shelves": 0.0,
+    "min(IoU, B-Iou)-shelf,shelves": 0.0,
+    "IoU-house exterior": 25.89800079088551,
+    "BoundaryIoU-house exterior": 0.0,
+    "min(IoU, B-Iou)-house exterior": 0.0,
+    "IoU-sea,ocean": 39.058525396588784,
+    "BoundaryIoU-sea,ocean": 0.0,
+    "min(IoU, B-Iou)-sea,ocean": 0.0,
+    "IoU-mirror,mirrors": 67.50125429182059,
+    "BoundaryIoU-mirror,mirrors": 0.0,
+    "min(IoU, B-Iou)-mirror,mirrors": 0.0,
+    "IoU-rug,carpet,carpeting": 20.85849510194339,
+    "BoundaryIoU-rug,carpet,carpeting": 0.0,
+    "min(IoU, B-Iou)-rug,carpet,carpeting": 0.0,
+    "IoU-field": 10.414387228657647,
+    "BoundaryIoU-field": 0.0,
+    "min(IoU, B-Iou)-field": 0.0,
+    "IoU-armchair,armchairs": 43.37941619823062,
+    "BoundaryIoU-armchair,armchairs": 0.0,
+    "min(IoU, B-Iou)-armchair,armchairs": 0.0,
+    "IoU-seat,seats": 36.3327304169781,
+    "BoundaryIoU-seat,seats": 0.0,
+    "min(IoU, B-Iou)-seat,seats": 0.0,
+    "IoU-fence,fencing": 40.248122901904985,
+    "BoundaryIoU-fence,fencing": 0.0,
+    "min(IoU, B-Iou)-fence,fencing": 0.0,
+    "IoU-desk,desks": 38.68026534417133,
+    "BoundaryIoU-desk,desks": 0.0,
+    "min(IoU, B-Iou)-desk,desks": 0.0,
+    "IoU-rock,stone,rocks,stones": 36.43352629234047,
+    "BoundaryIoU-rock,stone,rocks,stones": 0.0,
+    "min(IoU, B-Iou)-rock,stone,rocks,stones": 0.0,
+    "IoU-wardrobe,closet,press,wardrobes,closets": 39.70748178282803,
+    "BoundaryIoU-wardrobe,closet,press,wardrobes,closets": 0.0,
+    "min(IoU, B-Iou)-wardrobe,closet,press,wardrobes,closets": 0.0,
+    "IoU-lamp,lamps": 47.58088726235837,
+    "BoundaryIoU-lamp,lamps": 0.0,
+    "min(IoU, B-Iou)-lamp,lamps": 0.0,
+    "IoU-bathtub,bathing tub,bath,tub": 54.67448224401309,
+    "BoundaryIoU-bathtub,bathing tub,bath,tub": 0.0,
+    "min(IoU, B-Iou)-bathtub,bathing tub,bath,tub": 0.0,
+    "IoU-railing,rail": 19.991994880717897,
+    "BoundaryIoU-railing,rail": 0.0,
+    "min(IoU, B-Iou)-railing,rail": 0.0,
+    "IoU-cushion,cushions": 24.579049150421493,
+    "BoundaryIoU-cushion,cushions": 0.0,
+    "min(IoU, B-Iou)-cushion,cushions": 0.0,
+    "IoU-pedestal": 3.7882864072212143,
+    "BoundaryIoU-pedestal": 0.0,
+    "min(IoU, B-Iou)-pedestal": 0.0,
+    "IoU-box,boxes": 18.95416131016431,
+    "BoundaryIoU-box,boxes": 0.0,
+    "min(IoU, B-Iou)-box,boxes": 0.0,
+    "IoU-column,pillar": 28.620801915564865,
+    "BoundaryIoU-column,pillar": 0.0,
+    "min(IoU, B-Iou)-column,pillar": 0.0,
+    "IoU-signboard,sign,signboards,signs": 14.528504749123886,
+    "BoundaryIoU-signboard,sign,signboards,signs": 0.0,
+    "min(IoU, B-Iou)-signboard,sign,signboards,signs": 0.0,
+    "IoU-chest of drawers,chest,bureau,dresser": 25.394867762036398,
+    "BoundaryIoU-chest of drawers,chest,bureau,dresser": 0.0,
+    "min(IoU, B-Iou)-chest of drawers,chest,bureau,dresser": 0.0,
+    "IoU-counter": 24.527773475814364,
+    "BoundaryIoU-counter": 0.0,
+    "min(IoU, B-Iou)-counter": 0.0,
+    "IoU-sand": 54.465833409360464,
+    "BoundaryIoU-sand": 0.0,
+    "min(IoU, B-Iou)-sand": 0.0,
+    "IoU-sink": 66.39745423989233,
+    "BoundaryIoU-sink": 0.0,
+    "min(IoU, B-Iou)-sink": 0.0,
+    "IoU-skyscraper,skyscrapers": 41.24585039461617,
+    "BoundaryIoU-skyscraper,skyscrapers": 0.0,
+    "min(IoU, B-Iou)-skyscraper,skyscrapers": 0.0,
+    "IoU-fireplace,hearth,open fireplace": 31.69522860888571,
+    "BoundaryIoU-fireplace,hearth,open fireplace": 0.0,
+    "min(IoU, B-Iou)-fireplace,hearth,open fireplace": 0.0,
+    "IoU-refrigerator,icebox": 64.26586189504896,
+    "BoundaryIoU-refrigerator,icebox": 0.0,
+    "min(IoU, B-Iou)-refrigerator,icebox": 0.0,
+    "IoU-grandstand,covered stand": 34.170947212670974,
+    "BoundaryIoU-grandstand,covered stand": 0.0,
+    "min(IoU, B-Iou)-grandstand,covered stand": 0.0,
+    "IoU-path": 7.7739687062513285,
+    "BoundaryIoU-path": 0.0,
+    "min(IoU, B-Iou)-path": 0.0,
+    "IoU-stairs,steps": 41.145074532227845,
+    "BoundaryIoU-stairs,steps": 0.0,
+    "min(IoU, B-Iou)-stairs,steps": 0.0,
+    "IoU-runway": 54.339770858132084,
+    "BoundaryIoU-runway": 0.0,
+    "min(IoU, B-Iou)-runway": 0.0,
+    "IoU-case,display case,showcase,vitrine": 16.868631466459323,
+    "BoundaryIoU-case,display case,showcase,vitrine": 0.0,
+    "min(IoU, B-Iou)-case,display case,showcase,vitrine": 0.0,
+    "IoU-pool table,billiard table,snooker table": 92.25988133445831,
+    "BoundaryIoU-pool table,billiard table,snooker table": 0.0,
+    "min(IoU, B-Iou)-pool table,billiard table,snooker table": 0.0,
+    "IoU-pillow,pillows": 1.2796490972379584,
+    "BoundaryIoU-pillow,pillows": 0.0,
+    "min(IoU, B-Iou)-pillow,pillows": 0.0,
+    "IoU-screen door,shower door": 21.392215033777745,
+    "BoundaryIoU-screen door,shower door": 0.0,
+    "min(IoU, B-Iou)-screen door,shower door": 0.0,
+    "IoU-stairway,staircase": 0.25768284580746065,
+    "BoundaryIoU-stairway,staircase": 0.0,
+    "min(IoU, B-Iou)-stairway,staircase": 0.0,
+    "IoU-river": 18.01190497705589,
+    "BoundaryIoU-river": 0.0,
+    "min(IoU, B-Iou)-river": 0.0,
+    "IoU-bridge,span": 60.32859913179418,
+    "BoundaryIoU-bridge,span": 0.0,
+    "min(IoU, B-Iou)-bridge,span": 0.0,
+    "IoU-bookcase": 7.880157344744244,
+    "BoundaryIoU-bookcase": 0.0,
+    "min(IoU, B-Iou)-bookcase": 0.0,
+    "IoU-window screen,door screen": 4.6387804185615495,
+    "BoundaryIoU-window screen,door screen": 0.0,
+    "min(IoU, B-Iou)-window screen,door screen": 0.0,
+    "IoU-coffee table,cocktail table": 54.9868288202115,
+    "BoundaryIoU-coffee table,cocktail table": 0.0,
+    "min(IoU, B-Iou)-coffee table,cocktail table": 0.0,
+    "IoU-toilet,commode,crapper,potty": 82.82766776596434,
+    "BoundaryIoU-toilet,commode,crapper,potty": 0.0,
+    "min(IoU, B-Iou)-toilet,commode,crapper,potty": 0.0,
+    "IoU-flower,flowers": 31.416502462623548,
+    "BoundaryIoU-flower,flowers": 0.0,
+    "min(IoU, B-Iou)-flower,flowers": 0.0,
+    "IoU-book,books": 51.72477830388827,
+    "BoundaryIoU-book,books": 0.0,
+    "min(IoU, B-Iou)-book,books": 0.0,
+    "IoU-hill": 9.274559593425984,
+    "BoundaryIoU-hill": 0.0,
+    "min(IoU, B-Iou)-hill": 0.0,
+    "IoU-bench,benches": 46.32579286417518,
+    "BoundaryIoU-bench,benches": 0.0,
+    "min(IoU, B-Iou)-bench,benches": 0.0,
+    "IoU-countertop,counter top,worktop": 18.002201628487157,
+    "BoundaryIoU-countertop,counter top,worktop": 0.0,
+    "min(IoU, B-Iou)-countertop,counter top,worktop": 0.0,
+    "IoU-stove,kitchen stove,kitchen range,kitchen range,cooking stove": 32.774974823639916,
+    "BoundaryIoU-stove,kitchen stove,kitchen range,kitchen range,cooking stove": 0.0,
+    "min(IoU, B-Iou)-stove,kitchen stove,kitchen range,kitchen range,cooking stove": 0.0,
+    "IoU-palm tree,palm trees": 26.1713342097189,
+    "BoundaryIoU-palm tree,palm trees": 0.0,
+    "min(IoU, B-Iou)-palm tree,palm trees": 0.0,
+    "IoU-kitchen island": 6.84799808148137,
+    "BoundaryIoU-kitchen island": 0.0,
+    "min(IoU, B-Iou)-kitchen island": 0.0,
+    "IoU-computer,computing machine,computing device,data processor,electronic computer,information processing system": 24.42022546303556,
+    "BoundaryIoU-computer,computing machine,computing device,data processor,electronic computer,information processing system": 0.0,
+    "min(IoU, B-Iou)-computer,computing machine,computing device,data processor,electronic computer,information processing system": 0.0,
+    "IoU-swivel chair": 32.476123334420635,
+    "BoundaryIoU-swivel chair": 0.0,
+    "min(IoU, B-Iou)-swivel chair": 0.0,
+    "IoU-boat": 77.5642111683383,
+    "BoundaryIoU-boat": 0.0,
+    "min(IoU, B-Iou)-boat": 0.0,
+    "IoU-bar": 5.396246152803036,
+    "BoundaryIoU-bar": 0.0,
+    "min(IoU, B-Iou)-bar": 0.0,
+    "IoU-arcade machine,arcade machines": 20.787085853820965,
+    "BoundaryIoU-arcade machine,arcade machines": 0.0,
+    "min(IoU, B-Iou)-arcade machine,arcade machines": 0.0,
+    "IoU-hovel,hut,hutch,shack,shanty": 22.107609952500773,
+    "BoundaryIoU-hovel,hut,hutch,shack,shanty": 0.0,
+    "min(IoU, B-Iou)-hovel,hut,hutch,shack,shanty": 0.0,
+    "IoU-bus,autobus,double-decker,jitney,motorbus,motorcoach,omnibus,passenger vehicle": 61.92573974361489,
+    "BoundaryIoU-bus,autobus,double-decker,jitney,motorbus,motorcoach,omnibus,passenger vehicle": 0.0,
+    "min(IoU, B-Iou)-bus,autobus,double-decker,jitney,motorbus,motorcoach,omnibus,passenger vehicle": 0.0,
+    "IoU-towel": 56.43011242494986,
+    "BoundaryIoU-towel": 0.0,
+    "min(IoU, B-Iou)-towel": 0.0,
+    "IoU-light bulb,lightbulb,bulb,incandescent lamp,electric light,electric-light bulb": 0.2469950093632095,
+    "BoundaryIoU-light bulb,lightbulb,bulb,incandescent lamp,electric light,electric-light bulb": 0.0,
+    "min(IoU, B-Iou)-light bulb,lightbulb,bulb,incandescent lamp,electric light,electric-light bulb": 0.0,
+    "IoU-truck,motortruck": 42.157083825985204,
+    "BoundaryIoU-truck,motortruck": 0.0,
+    "min(IoU, B-Iou)-truck,motortruck": 0.0,
+    "IoU-tower,towers": 24.449877750611247,
+    "BoundaryIoU-tower,towers": 0.0,
+    "min(IoU, B-Iou)-tower,towers": 0.0,
+    "IoU-chandelier,pendant,pendent": 49.762428355865374,
+    "BoundaryIoU-chandelier,pendant,pendent": 0.0,
+    "min(IoU, B-Iou)-chandelier,pendant,pendent": 0.0,
+    "IoU-awning,sunshade,sunblind": 4.9729529226299025,
+    "BoundaryIoU-awning,sunshade,sunblind": 0.0,
+    "min(IoU, B-Iou)-awning,sunshade,sunblind": 0.0,
+    "IoU-streetlight,street lamp": 1.2782239540545677,
+    "BoundaryIoU-streetlight,street lamp": 0.0,
+    "min(IoU, B-Iou)-streetlight,street lamp": 0.0,
+    "IoU-booth,cubicle,stall,kiosk": 12.354465060278343,
+    "BoundaryIoU-booth,cubicle,stall,kiosk": 0.0,
+    "min(IoU, B-Iou)-booth,cubicle,stall,kiosk": 0.0,
+    "IoU-television receiver,television,television set,tv,tv set": 61.99236338903668,
+    "BoundaryIoU-television receiver,television,television set,tv,tv set": 0.0,
+    "min(IoU, B-Iou)-television receiver,television,television set,tv,tv set": 0.0,
+    "IoU-airplane,aeroplane,airplanes,aeroplanes": 33.3646594227558,
+    "BoundaryIoU-airplane,aeroplane,airplanes,aeroplanes": 0.0,
+    "min(IoU, B-Iou)-airplane,aeroplane,airplanes,aeroplanes": 0.0,
+    "IoU-dirt track": 2.3171679058927976,
+    "BoundaryIoU-dirt track": 0.0,
+    "min(IoU, B-Iou)-dirt track": 0.0,
+    "IoU-apparel,wearing apparel,dress,clothes": 2.693376224594239,
+    "BoundaryIoU-apparel,wearing apparel,dress,clothes": 0.0,
+    "min(IoU, B-Iou)-apparel,wearing apparel,dress,clothes": 0.0,
+    "IoU-pole": 0.7807768636621976,
+    "BoundaryIoU-pole": 0.0,
+    "min(IoU, B-Iou)-pole": 0.0,
+    "IoU-land,soil": 0.5150314751430144,
+    "BoundaryIoU-land,soil": 0.0,
+    "min(IoU, B-Iou)-land,soil": 0.0,
+    "IoU-bannister,banister,balustrade,balusters,handrail": 10.018087522058451,
+    "BoundaryIoU-bannister,banister,balustrade,balusters,handrail": 0.0,
+    "min(IoU, B-Iou)-bannister,banister,balustrade,balusters,handrail": 0.0,
+    "IoU-escalator,moving staircase,moving stairway": 37.88040798991633,
+    "BoundaryIoU-escalator,moving staircase,moving stairway": 0.0,
+    "min(IoU, B-Iou)-escalator,moving staircase,moving stairway": 0.0,
+    "IoU-ottoman,pouf,pouffe,puff,hassock": 41.05239781824939,
+    "BoundaryIoU-ottoman,pouf,pouffe,puff,hassock": 0.0,
+    "min(IoU, B-Iou)-ottoman,pouf,pouffe,puff,hassock": 0.0,
+    "IoU-bottle,bottles,water bottle": 32.504757815274836,
+    "BoundaryIoU-bottle,bottles,water bottle": 0.0,
+    "min(IoU, B-Iou)-bottle,bottles,water bottle": 0.0,
+    "IoU-buffet,sideboard": 3.353049963062587,
+    "BoundaryIoU-buffet,sideboard": 0.0,
+    "min(IoU, B-Iou)-buffet,sideboard": 0.0,
+    "IoU-poster,posting,placard,notice,bill,card": 24.666691407735915,
+    "BoundaryIoU-poster,posting,placard,notice,bill,card": 0.0,
+    "min(IoU, B-Iou)-poster,posting,placard,notice,bill,card": 0.0,
+    "IoU-stage": 9.017036168285978,
+    "BoundaryIoU-stage": 0.0,
+    "min(IoU, B-Iou)-stage": 0.0,
+    "IoU-van": 39.8109191209538,
+    "BoundaryIoU-van": 0.0,
+    "min(IoU, B-Iou)-van": 0.0,
+    "IoU-ship": 10.121346176421524,
+    "BoundaryIoU-ship": 0.0,
+    "min(IoU, B-Iou)-ship": 0.0,
+    "IoU-fountain": 39.45548902195608,
+    "BoundaryIoU-fountain": 0.0,
+    "min(IoU, B-Iou)-fountain": 0.0,
+    "IoU-conveyer belt,conveyor belt,conveyer,conveyor,transporter": 34.54216718266254,
+    "BoundaryIoU-conveyer belt,conveyor belt,conveyer,conveyor,transporter": 0.0,
+    "min(IoU, B-Iou)-conveyer belt,conveyor belt,conveyer,conveyor,transporter": 0.0,
+    "IoU-canopy": 3.262435559203282,
+    "BoundaryIoU-canopy": 0.0,
+    "min(IoU, B-Iou)-canopy": 0.0,
+    "IoU-washer,automatic washer,washing machine": 76.14153932222148,
+    "BoundaryIoU-washer,automatic washer,washing machine": 0.0,
+    "min(IoU, B-Iou)-washer,automatic washer,washing machine": 0.0,
+    "IoU-plaything,toy,toys": 8.621481989151988,
+    "BoundaryIoU-plaything,toy,toys": 0.0,
+    "min(IoU, B-Iou)-plaything,toy,toys": 0.0,
+    "IoU-swimming pool,swimming bath": 26.48575375028107,
+    "BoundaryIoU-swimming pool,swimming bath": 0.0,
+    "min(IoU, B-Iou)-swimming pool,swimming bath": 0.0,
+    "IoU-stool,stools": 35.9769352164727,
+    "BoundaryIoU-stool,stools": 0.0,
+    "min(IoU, B-Iou)-stool,stools": 0.0,
+    "IoU-barrel,cask,barrels,casks": 3.2011220941330745,
+    "BoundaryIoU-barrel,cask,barrels,casks": 0.0,
+    "min(IoU, B-Iou)-barrel,cask,barrels,casks": 0.0,
+    "IoU-basket,handbasket": 28.89308298129415,
+    "BoundaryIoU-basket,handbasket": 0.0,
+    "min(IoU, B-Iou)-basket,handbasket": 0.0,
+    "IoU-waterfall,falls": 32.04174274862098,
+    "BoundaryIoU-waterfall,falls": 0.0,
+    "min(IoU, B-Iou)-waterfall,falls": 0.0,
+    "IoU-tent,collapsible shelter": 82.18190205274082,
+    "BoundaryIoU-tent,collapsible shelter": 0.0,
+    "min(IoU, B-Iou)-tent,collapsible shelter": 0.0,
+    "IoU-bag,bags,gift bag,paper bag": 22.522283330172577,
+    "BoundaryIoU-bag,bags,gift bag,paper bag": 0.0,
+    "min(IoU, B-Iou)-bag,bags,gift bag,paper bag": 0.0,
+    "IoU-minibike,motorbike": 78.78425520095286,
+    "BoundaryIoU-minibike,motorbike": 0.0,
+    "min(IoU, B-Iou)-minibike,motorbike": 0.0,
+    "IoU-cradle": 54.2188239442501,
+    "BoundaryIoU-cradle": 0.0,
+    "min(IoU, B-Iou)-cradle": 0.0,
+    "IoU-oven": 20.37622644572866,
+    "BoundaryIoU-oven": 0.0,
+    "min(IoU, B-Iou)-oven": 0.0,
+    "IoU-ball,balls": 49.549549549549546,
+    "BoundaryIoU-ball,balls": 0.0,
+    "min(IoU, B-Iou)-ball,balls": 0.0,
+    "IoU-food,solid food": 54.21039422668162,
+    "BoundaryIoU-food,solid food": 0.0,
+    "min(IoU, B-Iou)-food,solid food": 0.0,
+    "IoU-step,stair": 0.0003719027474315467,
+    "BoundaryIoU-step,stair": 0.0,
+    "min(IoU, B-Iou)-step,stair": 0.0,
+    "IoU-tank,storage tank": 30.832997807900504,
+    "BoundaryIoU-tank,storage tank": 0.0,
+    "min(IoU, B-Iou)-tank,storage tank": 0.0,
+    "IoU-trade name,brand name,brand,marque": 0.6563544115827249,
+    "BoundaryIoU-trade name,brand name,brand,marque": 0.0,
+    "min(IoU, B-Iou)-trade name,brand name,brand,marque": 0.0,
+    "IoU-microwave,microwave oven": 86.10246139474317,
+    "BoundaryIoU-microwave,microwave oven": 0.0,
+    "min(IoU, B-Iou)-microwave,microwave oven": 0.0,
+    "IoU-plant pots,plant pot,flower pot,flowerpot,planter": 27.069804097306193,
+    "BoundaryIoU-plant pots,plant pot,flower pot,flowerpot,planter": 0.0,
+    "min(IoU, B-Iou)-plant pots,plant pot,flower pot,flowerpot,planter": 0.0,
+    "IoU-animal,animate being,dog,cat,horse,cow,sheep,zebra,girraffe,bird": 75.89210875601842,
+    "BoundaryIoU-animal,animate being,dog,cat,horse,cow,sheep,zebra,girraffe,bird": 0.0,
+    "min(IoU, B-Iou)-animal,animate being,dog,cat,horse,cow,sheep,zebra,girraffe,bird": 0.0,
+    "IoU-bicycle,bike": 54.60653429248218,
+    "BoundaryIoU-bicycle,bike": 0.0,
+    "min(IoU, B-Iou)-bicycle,bike": 0.0,
+    "IoU-lake": 5.819550989686919,
+    "BoundaryIoU-lake": 0.0,
+    "min(IoU, B-Iou)-lake": 0.0,
+    "IoU-dishwasher,dish washer,dishwashing machine": 54.32804330347769,
+    "BoundaryIoU-dishwasher,dish washer,dishwashing machine": 0.0,
+    "min(IoU, B-Iou)-dishwasher,dish washer,dishwashing machine": 0.0,
+    "IoU-projection screen": 39.32428832174162,
+    "BoundaryIoU-projection screen": 0.0,
+    "min(IoU, B-Iou)-projection screen": 0.0,
+    "IoU-blanket,cover": 2.025938267549006,
+    "BoundaryIoU-blanket,cover": 0.0,
+    "min(IoU, B-Iou)-blanket,cover": 0.0,
+    "IoU-sculpture,sculptures": 14.225717479788846,
+    "BoundaryIoU-sculpture,sculptures": 0.0,
+    "min(IoU, B-Iou)-sculpture,sculptures": 0.0,
+    "IoU-exhaust hood": 6.55025675843669,
+    "BoundaryIoU-exhaust hood": 0.0,
+    "min(IoU, B-Iou)-exhaust hood": 0.0,
+    "IoU-sconce,sconce lamp,sconce light": 13.343162245952463,
+    "BoundaryIoU-sconce,sconce lamp,sconce light": 0.0,
+    "min(IoU, B-Iou)-sconce,sconce lamp,sconce light": 0.0,
+    "IoU-vase,vases": 41.252479137821354,
+    "BoundaryIoU-vase,vases": 0.0,
+    "min(IoU, B-Iou)-vase,vases": 0.0,
+    "IoU-traffic light,traffic signal,traffic lights": 24.870762402158167,
+    "BoundaryIoU-traffic light,traffic signal,traffic lights": 0.0,
+    "min(IoU, B-Iou)-traffic light,traffic signal,traffic lights": 0.0,
+    "IoU-tray,trays": 4.720872811947969,
+    "BoundaryIoU-tray,trays": 0.0,
+    "min(IoU, B-Iou)-tray,trays": 0.0,
+    "IoU-ashcan,trash can,garbage can,wastebin,ash bin,ash-bin,ashbin,dustbin,trash barrel,trash bin": 23.621791056620246,
+    "BoundaryIoU-ashcan,trash can,garbage can,wastebin,ash bin,ash-bin,ashbin,dustbin,trash barrel,trash bin": 0.0,
+    "min(IoU, B-Iou)-ashcan,trash can,garbage can,wastebin,ash bin,ash-bin,ashbin,dustbin,trash barrel,trash bin": 0.0,
+    "IoU-ceiling fan,floor fan": 13.687974700397382,
+    "BoundaryIoU-ceiling fan,floor fan": 0.0,
+    "min(IoU, B-Iou)-ceiling fan,floor fan": 0.0,
+    "IoU-pier,wharf,wharfage,dock": 3.7268438461151647,
+    "BoundaryIoU-pier,wharf,wharfage,dock": 0.0,
+    "min(IoU, B-Iou)-pier,wharf,wharfage,dock": 0.0,
+    "IoU-crt screen": 0.22842557204631386,
+    "BoundaryIoU-crt screen": 0.0,
+    "min(IoU, B-Iou)-crt screen": 0.0,
+    "IoU-plate,plates": 15.897119727654099,
+    "BoundaryIoU-plate,plates": 0.0,
+    "min(IoU, B-Iou)-plate,plates": 0.0,
+    "IoU-monitor,monitoring device,monitors": 9.755190237512105,
+    "BoundaryIoU-monitor,monitoring device,monitors": 0.0,
+    "min(IoU, B-Iou)-monitor,monitoring device,monitors": 0.0,
+    "IoU-bulletin board,notice board": 11.584292514635878,
+    "BoundaryIoU-bulletin board,notice board": 0.0,
+    "min(IoU, B-Iou)-bulletin board,notice board": 0.0,
+    "IoU-shower": 0.8525947491603526,
+    "BoundaryIoU-shower": 0.0,
+    "min(IoU, B-Iou)-shower": 0.0,
+    "IoU-radiator": 31.358917225341287,
+    "BoundaryIoU-radiator": 0.0,
+    "min(IoU, B-Iou)-radiator": 0.0,
+    "IoU-cup,cups,drinking glass,drinking glasses": 21.649578053272492,
+    "BoundaryIoU-cup,cups,drinking glass,drinking glasses": 0.0,
+    "min(IoU, B-Iou)-cup,cups,drinking glass,drinking glasses": 0.0,
+    "IoU-clock": 29.693484977312334,
+    "BoundaryIoU-clock": 0.0,
+    "min(IoU, B-Iou)-clock": 0.0,
+    "IoU-flag,flags": 29.453231922101814,
+    "BoundaryIoU-flag,flags": 0.0,
+    "min(IoU, B-Iou)-flag,flags": 0.0,
+    "mACC": 54.143585132806315,
+    "pACC": 71.16048475592423,
+    "ACC-wall,walls,brick wall,stone wall,interior wall": 72.82916905854033,
+    "ACC-building,buildings,edifice,edifices": 70.69650896706658,
+    "ACC-sky,clouds": 94.47174828807398,
+    "ACC-floor,flooring": 56.1531336756805,
+    "ACC-tree,trees": 83.88299208270801,
+    "ACC-ceiling": 88.87173290504296,
+    "ACC-road,route,street,roads,streets,routes": 68.57412277206684,
+    "ACC-bed,beds": 97.81132386141095,
+    "ACC-windowpane,window,windows": 71.89729878846603,
+    "ACC-grass,grass field": 91.35096977242685,
+    "ACC-cabinet,cabinets,wall mounted cabine": 75.01396379286035,
+    "ACC-sidewalk,pavement": 91.12288174864612,
+    "ACC-person,child,girl,boy,woman,man,people,children,girls,boys,women,men": 94.43188473695837,
+    "ACC-earth,ground": 19.19503150089884,
+    "ACC-door,double door,doors": 48.05222864055363,
+    "ACC-table,tables,tablecloth": 63.33978686995147,
+    "ACC-mountain,mount,mountains": 41.95136208356975,
+    "ACC-plant,flora,plant life,plants,bushes": 60.64075724963621,
+    "ACC-curtain,drape,drapery,mantle,pall": 92.33451146843986,
+    "ACC-chair,chairs": 70.29596649233054,
+    "ACC-car,automobile,cars": 92.25399923571563,
+    "ACC-water": 23.84682944142636,
+    "ACC-painting,picture,paintings,pictures,wallart,framed canvas": 48.43968072398674,
+    "ACC-sofa,couch,sofas,couches": 88.17249852886691,
+    "ACC-shelf,shelves": 63.93958928869156,
+    "ACC-house exterior": 56.48301477157543,
+    "ACC-sea,ocean": 60.78466169094926,
+    "ACC-mirror,mirrors": 83.12452837490085,
+    "ACC-rug,carpet,carpeting": 94.3434787940873,
+    "ACC-field": 10.524757335515929,
+    "ACC-armchair,armchairs": 72.32098430361424,
+    "ACC-seat,seats": 44.42318870244192,
+    "ACC-fence,fencing": 59.87497497769617,
+    "ACC-desk,desks": 64.2882113516618,
+    "ACC-rock,stone,rocks,stones": 85.5777907141512,
+    "ACC-wardrobe,closet,press,wardrobes,closets": 47.77215532142961,
+    "ACC-lamp,lamps": 75.60366261738825,
+    "ACC-bathtub,bathing tub,bath,tub": 64.91854461316082,
+    "ACC-railing,rail": 37.51119285593282,
+    "ACC-cushion,cushions": 30.85583119050644,
+    "ACC-pedestal": 4.22835207658496,
+    "ACC-box,boxes": 23.213933859075933,
+    "ACC-column,pillar": 61.893320681825884,
+    "ACC-signboard,sign,signboards,signs": 21.834080635753864,
+    "ACC-chest of drawers,chest,bureau,dresser": 70.38653076576499,
+    "ACC-counter": 44.75779577552688,
+    "ACC-sand": 78.86179724790445,
+    "ACC-sink": 73.36744273255329,
+    "ACC-skyscraper,skyscrapers": 60.49485161082535,
+    "ACC-fireplace,hearth,open fireplace": 35.27499310057326,
+    "ACC-refrigerator,icebox": 81.96544060439463,
+    "ACC-grandstand,covered stand": 67.38702444159838,
+    "ACC-path": 9.577493286917687,
+    "ACC-stairs,steps": 52.40946550457226,
+    "ACC-runway": 79.98042956855802,
+    "ACC-case,display case,showcase,vitrine": 45.11728037036457,
+    "ACC-pool table,billiard table,snooker table": 96.38201479730581,
+    "ACC-pillow,pillows": 1.342991332734772,
+    "ACC-screen door,shower door": 90.44646279522502,
+    "ACC-stairway,staircase": 0.2611088690037157,
+    "ACC-river": 46.843520933879404,
+    "ACC-bridge,span": 92.88453440678171,
+    "ACC-bookcase": 11.44589249689436,
+    "ACC-window screen,door screen": 10.849045893124057,
+    "ACC-coffee table,cocktail table": 79.27426548246406,
+    "ACC-toilet,commode,crapper,potty": 95.00428048165517,
+    "ACC-flower,flowers": 71.39176332931386,
+    "ACC-book,books": 82.38885920911572,
+    "ACC-hill": 41.255911728991954,
+    "ACC-bench,benches": 73.94311395306751,
+    "ACC-countertop,counter top,worktop": 78.31597851052892,
+    "ACC-stove,kitchen stove,kitchen range,kitchen range,cooking stove": 39.67350909325815,
+    "ACC-palm tree,palm trees": 28.328347247572662,
+    "ACC-kitchen island": 9.411397731753683,
+    "ACC-computer,computing machine,computing device,data processor,electronic computer,information processing system": 33.044816587966395,
+    "ACC-swivel chair": 47.60969439566853,
+    "ACC-boat": 80.02872642306504,
+    "ACC-bar": 7.187806419982453,
+    "ACC-arcade machine,arcade machines": 23.274599888928158,
+    "ACC-hovel,hut,hutch,shack,shanty": 77.68014538396024,
+    "ACC-bus,autobus,double-decker,jitney,motorbus,motorcoach,omnibus,passenger vehicle": 96.94381003441165,
+    "ACC-towel": 72.17530392000842,
+    "ACC-light bulb,lightbulb,bulb,incandescent lamp,electric light,electric-light bulb": 0.24823558043319544,
+    "ACC-truck,motortruck": 78.09257691222128,
+    "ACC-tower,towers": 60.91292934270107,
+    "ACC-chandelier,pendant,pendent": 64.17930493267639,
+    "ACC-awning,sunshade,sunblind": 44.322326830325494,
+    "ACC-streetlight,street lamp": 2.1765497278675827,
+    "ACC-booth,cubicle,stall,kiosk": 72.81409668083789,
+    "ACC-television receiver,television,television set,tv,tv set": 78.99545257568526,
+    "ACC-airplane,aeroplane,airplanes,aeroplanes": 72.04523413835973,
+    "ACC-dirt track": 20.085034340791474,
+    "ACC-apparel,wearing apparel,dress,clothes": 2.798830629721697,
+    "ACC-pole": 0.9253635751278173,
+    "ACC-land,soil": 4.455937626192029,
+    "ACC-bannister,banister,balustrade,balusters,handrail": 50.11064295396274,
+    "ACC-escalator,moving staircase,moving stairway": 89.21781474441238,
+    "ACC-ottoman,pouf,pouffe,puff,hassock": 65.85207156514217,
+    "ACC-bottle,bottles,water bottle": 48.44587013889986,
+    "ACC-buffet,sideboard": 5.104504362704902,
+    "ACC-poster,posting,placard,notice,bill,card": 42.590189670639504,
+    "ACC-stage": 41.375039478817676,
+    "ACC-van": 57.290233507988944,
+    "ACC-ship": 11.074567333693889,
+    "ACC-fountain": 46.03716233301304,
+    "ACC-conveyer belt,conveyor belt,conveyer,conveyor,transporter": 90.01742722519847,
+    "ACC-canopy": 10.868655678583846,
+    "ACC-washer,automatic washer,washing machine": 79.7758201804312,
+    "ACC-plaything,toy,toys": 39.058582831455496,
+    "ACC-swimming pool,swimming bath": 89.42975149243371,
+    "ACC-stool,stools": 74.37080699577307,
+    "ACC-barrel,cask,barrels,casks": 87.76880191148025,
+    "ACC-basket,handbasket": 36.18520604835592,
+    "ACC-waterfall,falls": 94.35594546110286,
+    "ACC-tent,collapsible shelter": 97.55149347034505,
+    "ACC-bag,bags,gift bag,paper bag": 38.347237470132036,
+    "ACC-minibike,motorbike": 91.69200760502106,
+    "ACC-cradle": 59.97803303257064,
+    "ACC-oven": 68.11463408477016,
+    "ACC-ball,balls": 73.55831455826663,
+    "ACC-food,solid food": 82.03327694814693,
+    "ACC-step,stair": 0.0007589815984911446,
+    "ACC-tank,storage tank": 47.79906927712933,
+    "ACC-trade name,brand name,brand,marque": 0.7756744741090859,
+    "ACC-microwave,microwave oven": 96.02621957114978,
+    "ACC-plant pots,plant pot,flower pot,flowerpot,planter": 63.62301909177855,
+    "ACC-animal,animate being,dog,cat,horse,cow,sheep,zebra,girraffe,bird": 87.34934967192953,
+    "ACC-bicycle,bike": 87.23428372133577,
+    "ACC-lake": 29.659020183159956,
+    "ACC-dishwasher,dish washer,dishwashing machine": 66.39089321810093,
+    "ACC-projection screen": 88.15100302688586,
+    "ACC-blanket,cover": 2.2488729586485228,
+    "ACC-sculpture,sculptures": 26.979813029027984,
+    "ACC-exhaust hood": 18.371068878768863,
+    "ACC-sconce,sconce lamp,sconce light": 27.29199429573138,
+    "ACC-vase,vases": 83.55047255254163,
+    "ACC-traffic light,traffic signal,traffic lights": 34.04790782292299,
+    "ACC-tray,trays": 6.569042331811008,
+    "ACC-ashcan,trash can,garbage can,wastebin,ash bin,ash-bin,ashbin,dustbin,trash barrel,trash bin": 32.83692402731354,
+    "ACC-ceiling fan,floor fan": 53.04343603564231,
+    "ACC-pier,wharf,wharfage,dock": 50.533654314459454,
+    "ACC-crt screen": 1.143311584474222,
+    "ACC-plate,plates": 17.252112696542596,
+    "ACC-monitor,monitoring device,monitors": 23.98387859055821,
+    "ACC-bulletin board,notice board": 32.71882223205218,
+    "ACC-shower": 74.77241913616115,
+    "ACC-radiator": 33.37060909632161,
+    "ACC-cup,cups,drinking glass,drinking glasses": 34.72573114112247,
+    "ACC-clock": 33.445856248814714,
+    "ACC-flag,flags": 39.27150455608805
+  },
+  "panoptic_seg": {
+    "PQ": 27.642918841424617,
+    "SQ": 73.6419099708841,
+    "RQ": 33.35815822340798,
+    "PQ_th": 25.53610351552861,
+    "SQ_th": 73.34293550825005,
+    "RQ_th": 31.108463052518793,
+    "PQ_st": 31.85654949321667,
+    "SQ_st": 74.2398588961524,
+    "RQ_st": 37.8575485651863
+  },
+  "pq_res": {
+    "All": {
+      "pq": 0.2764291884142462,
+      "sq": 0.736419099708841,
+      "rq": 0.3335815822340798,
+      "n": 150
+    },
+    "per_class": {
+      "0": {
+        "pq": 0.5434160472790159,
+        "sq": 0.7977021376155814,
+        "rq": 0.6812267657992565
+      },
+      "1": {
+        "pq": 0.6110742545070158,
+        "sq": 0.8371093741588457,
+        "rq": 0.7299813780260708
+      },
+      "2": {
+        "pq": 0.8723805971485825,
+        "sq": 0.9317792760465947,
+        "rq": 0.9362524146812621
+      },
+      "3": {
+        "pq": 0.5458255188572402,
+        "sq": 0.8630267524036627,
+        "rq": 0.6324549237170597
+      },
+      "4": {
+        "pq": 0.5810311190432186,
+        "sq": 0.7977215481452189,
+        "rq": 0.7283633247643531
+      },
+      "5": {
+        "pq": 0.7530417359316948,
+        "sq": 0.8721939093386085,
+        "rq": 0.8633879781420765
+      },
+      "6": {
+        "pq": 0.7383280195886363,
+        "sq": 0.9147203792173206,
+        "rq": 0.8071625344352618
+      },
+      "7": {
+        "pq": 0.7169465133814236,
+        "sq": 0.8281968344233686,
+        "rq": 0.8656716417910447
+      },
+      "8": {
+        "pq": 0.2853425069933336,
+        "sq": 0.7946390931806382,
+        "rq": 0.3590844062947067
+      },
+      "9": {
+        "pq": 0.534606719031423,
+        "sq": 0.8647102654213077,
+        "rq": 0.6182495344506518
+      },
+      "10": {
+        "pq": 0.17088459211371734,
+        "sq": 0.7936444200745326,
+        "rq": 0.2153163152053274
+      },
+      "11": {
+        "pq": 0.5073039285300959,
+        "sq": 0.8080473967093299,
+        "rq": 0.6278145695364239
+      },
+      "12": {
+        "pq": 0.5695378585688486,
+        "sq": 0.7900541249370446,
+        "rq": 0.720884608525058
+      },
+      "13": {
+        "pq": 0.11884884773818169,
+        "sq": 0.79480166924909,
+        "rq": 0.14953271028037382
+      },
+      "14": {
+        "pq": 0.3431739105596991,
+        "sq": 0.8049758395844793,
+        "rq": 0.4263157894736842
+      },
+      "15": {
+        "pq": 0.31437055130898484,
+        "sq": 0.7830020010509833,
+        "rq": 0.40149393090569563
+      },
+      "16": {
+        "pq": 0.5527280474235318,
+        "sq": 0.8347902984283239,
+        "rq": 0.6621160409556314
+      },
+      "17": {
+        "pq": 0.20018378903976874,
+        "sq": 0.7111792505360205,
+        "rq": 0.2814814814814815
+      },
+      "18": {
+        "pq": 0.399703152937974,
+        "sq": 0.8139650299895828,
+        "rq": 0.49105691056910566
+      },
+      "19": {
+        "pq": 0.4591742752156691,
+        "sq": 0.7765525546665922,
+        "rq": 0.591298389859541
+      },
+      "20": {
+        "pq": 0.5924152142267107,
+        "sq": 0.83009077921587,
+        "rq": 0.7136752136752137
+      },
+      "21": {
+        "pq": 0.22427762381347519,
+        "sq": 0.8453541205277142,
+        "rq": 0.2653061224489796
+      },
+      "22": {
+        "pq": 0.07852270658273411,
+        "sq": 0.8707966819751923,
+        "rq": 0.09017341040462427
+      },
+      "23": {
+        "pq": 0.6172886425814127,
+        "sq": 0.8239701077314392,
+        "rq": 0.7491638795986622
+      },
+      "24": {
+        "pq": 0.19207296136410493,
+        "sq": 0.7134138564952469,
+        "rq": 0.2692307692307692
+      },
+      "25": {
+        "pq": 0.301444049088906,
+        "sq": 0.8478113880625481,
+        "rq": 0.35555555555555557
+      },
+      "26": {
+        "pq": 0.698292333129428,
+        "sq": 0.8988656628580934,
+        "rq": 0.7768595041322314
+      },
+      "27": {
+        "pq": 0.5989779954907436,
+        "sq": 0.8924772132812079,
+        "rq": 0.6711409395973155
+      },
+      "28": {
+        "pq": 0.3214530999111253,
+        "sq": 0.8604552674388707,
+        "rq": 0.37358490566037733
+      },
+      "29": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "30": {
+        "pq": 0.43528932964584605,
+        "sq": 0.8343045484878716,
+        "rq": 0.5217391304347826
+      },
+      "31": {
+        "pq": 0.17419906417902026,
+        "sq": 0.7746298811364943,
+        "rq": 0.22488038277511962
+      },
+      "32": {
+        "pq": 0.15559833109593751,
+        "sq": 0.7473434993547302,
+        "rq": 0.2082018927444795
+      },
+      "33": {
+        "pq": 0.19484731225867333,
+        "sq": 0.7693109397799344,
+        "rq": 0.25327510917030566
+      },
+      "34": {
+        "pq": 0.3973080342818307,
+        "sq": 0.8004588337736883,
+        "rq": 0.49635036496350365
+      },
+      "35": {
+        "pq": 0.232296184699724,
+        "sq": 0.942090082393325,
+        "rq": 0.2465753424657534
+      },
+      "36": {
+        "pq": 0.23555205340039903,
+        "sq": 0.73870405862302,
+        "rq": 0.3188720173535792
+      },
+      "37": {
+        "pq": 0.307522471545589,
+        "sq": 0.8666542379921144,
+        "rq": 0.3548387096774194
+      },
+      "38": {
+        "pq": 0.08850443885076527,
+        "sq": 0.749126857415406,
+        "rq": 0.11814345991561181
+      },
+      "39": {
+        "pq": 0.02432911523292806,
+        "sq": 0.79221681477222,
+        "rq": 0.030710172744721688
+      },
+      "40": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "41": {
+        "pq": 0.04780308552388135,
+        "sq": 0.812652453905983,
+        "rq": 0.058823529411764705
+      },
+      "42": {
+        "pq": 0.06126719355246297,
+        "sq": 0.7290796032743093,
+        "rq": 0.08403361344537816
+      },
+      "43": {
+        "pq": 0.019860480403090092,
+        "sq": 0.8374502569969656,
+        "rq": 0.023715415019762844
+      },
+      "44": {
+        "pq": 0.24760327935306303,
+        "sq": 0.8517552809745368,
+        "rq": 0.29069767441860467
+      },
+      "45": {
+        "pq": 0.11212432001279614,
+        "sq": 0.6914333067455761,
+        "rq": 0.16216216216216217
+      },
+      "46": {
+        "pq": 0.545156041812767,
+        "sq": 0.8934501796375903,
+        "rq": 0.6101694915254238
+      },
+      "47": {
+        "pq": 0.5436431276398632,
+        "sq": 0.7736459893336515,
+        "rq": 0.7027027027027027
+      },
+      "48": {
+        "pq": 0.3276061857341558,
+        "sq": 0.8190154643353894,
+        "rq": 0.4
+      },
+      "49": {
+        "pq": 0.17684240444549046,
+        "sq": 0.8105276870418313,
+        "rq": 0.21818181818181817
+      },
+      "50": {
+        "pq": 0.6555870571145143,
+        "sq": 0.9036470246713575,
+        "rq": 0.7254901960784313
+      },
+      "51": {
+        "pq": 0.1382851881466781,
+        "sq": 0.7605685348067295,
+        "rq": 0.18181818181818182
+      },
+      "52": {
+        "pq": 0.0822541288999402,
+        "sq": 0.7711324584369394,
+        "rq": 0.10666666666666667
+      },
+      "53": {
+        "pq": 0.2067955127538901,
+        "sq": 0.8321057537001769,
+        "rq": 0.2485207100591716
+      },
+      "54": {
+        "pq": 0.6244096865388442,
+        "sq": 0.9019251027783306,
+        "rq": 0.6923076923076923
+      },
+      "55": {
+        "pq": 0.07961797689325781,
+        "sq": 0.7364662862626348,
+        "rq": 0.10810810810810811
+      },
+      "56": {
+        "pq": 0.8116084654861417,
+        "sq": 0.8970409355373146,
+        "rq": 0.9047619047619048
+      },
+      "57": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "58": {
+        "pq": 0.37904863466344907,
+        "sq": 0.8747276184541133,
+        "rq": 0.43333333333333335
+      },
+      "59": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "60": {
+        "pq": 0.3389028891565598,
+        "sq": 0.8164478693317122,
+        "rq": 0.41509433962264153
+      },
+      "61": {
+        "pq": 0.4428606949400292,
+        "sq": 0.781518873423581,
+        "rq": 0.5666666666666667
+      },
+      "62": {
+        "pq": 0.02209012903648392,
+        "sq": 0.6627038710945176,
+        "rq": 0.03333333333333333
+      },
+      "63": {
+        "pq": 0.023180417516600844,
+        "sq": 0.9272167006640337,
+        "rq": 0.025
+      },
+      "64": {
+        "pq": 0.4527918407785067,
+        "sq": 0.794901231588934,
+        "rq": 0.569620253164557
+      },
+      "65": {
+        "pq": 0.6963044293233355,
+        "sq": 0.9079263637255257,
+        "rq": 0.7669172932330827
+      },
+      "66": {
+        "pq": 0.2855464267402363,
+        "sq": 0.7269946381949693,
+        "rq": 0.3927765237020316
+      },
+      "67": {
+        "pq": 0.17139056362770524,
+        "sq": 0.7803464298503852,
+        "rq": 0.21963394342762063
+      },
+      "68": {
+        "pq": 0.20960204457148499,
+        "sq": 0.7785218798369442,
+        "rq": 0.2692307692307692
+      },
+      "69": {
+        "pq": 0.29746427158586464,
+        "sq": 0.7289969472667668,
+        "rq": 0.40804597701149425
+      },
+      "70": {
+        "pq": 0.33157104786711583,
+        "sq": 0.7957705148810781,
+        "rq": 0.4166666666666667
+      },
+      "71": {
+        "pq": 0.4879120420461594,
+        "sq": 0.867399185859839,
+        "rq": 0.5625
+      },
+      "72": {
+        "pq": 0.06596885635623534,
+        "sq": 0.76523873373233,
+        "rq": 0.08620689655172414
+      },
+      "73": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "74": {
+        "pq": 0.11870395440556725,
+        "sq": 0.6744542863952684,
+        "rq": 0.176
+      },
+      "75": {
+        "pq": 0.33553034537696796,
+        "sq": 0.8099008336685434,
+        "rq": 0.4142857142857143
+      },
+      "76": {
+        "pq": 0.3831246025205943,
+        "sq": 0.7914547709964909,
+        "rq": 0.4840764331210191
+      },
+      "77": {
+        "pq": 0.03260918895032903,
+        "sq": 0.5054424287300999,
+        "rq": 0.06451612903225806
+      },
+      "78": {
+        "pq": 0.05237643872714963,
+        "sq": 0.6547054840893703,
+        "rq": 0.08
+      },
+      "79": {
+        "pq": 0.2517377169763872,
+        "sq": 0.8810820094173553,
+        "rq": 0.2857142857142857
+      },
+      "80": {
+        "pq": 0.6189024669119171,
+        "sq": 0.8988821543244511,
+        "rq": 0.6885245901639344
+      },
+      "81": {
+        "pq": 0.23653872564805442,
+        "sq": 0.7758470201256185,
+        "rq": 0.3048780487804878
+      },
+      "82": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "83": {
+        "pq": 0.32200358520003014,
+        "sq": 0.8765653152667487,
+        "rq": 0.3673469387755102
+      },
+      "84": {
+        "pq": 0.14959349891792362,
+        "sq": 0.8227642440485798,
+        "rq": 0.18181818181818182
+      },
+      "85": {
+        "pq": 0.37250962227267653,
+        "sq": 0.7257515054622835,
+        "rq": 0.5132743362831859
+      },
+      "86": {
+        "pq": 0.05048935343439299,
+        "sq": 0.9138572971625131,
+        "rq": 0.055248618784530384
+      },
+      "87": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "88": {
+        "pq": 0.11074614542444024,
+        "sq": 0.7060066770808066,
+        "rq": 0.1568627450980392
+      },
+      "89": {
+        "pq": 0.5559105287008689,
+        "sq": 0.9114347040328199,
+        "rq": 0.6099290780141844
+      },
+      "90": {
+        "pq": 0.5042787130009431,
+        "sq": 0.7924379775729106,
+        "rq": 0.6363636363636364
+      },
+      "91": {
+        "pq": 0.07215836978948786,
+        "sq": 0.9380588072633422,
+        "rq": 0.07692307692307693
+      },
+      "92": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "93": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "94": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "95": {
+        "pq": 0.03701056590911103,
+        "sq": 0.7525481734852577,
+        "rq": 0.04918032786885246
+      },
+      "96": {
+        "pq": 0.33664482791943035,
+        "sq": 0.6171821845189557,
+        "rq": 0.5454545454545454
+      },
+      "97": {
+        "pq": 0.4066423707427875,
+        "sq": 0.9089652993074072,
+        "rq": 0.4473684210526316
+      },
+      "98": {
+        "pq": 0.3377993955232395,
+        "sq": 0.7644576681821104,
+        "rq": 0.4418811002661934
+      },
+      "99": {
+        "pq": 0.1141872812294735,
+        "sq": 0.7993109686063145,
+        "rq": 0.14285714285714285
+      },
+      "100": {
+        "pq": 0.03296036684890873,
+        "sq": 0.8899299049205358,
+        "rq": 0.037037037037037035
+      },
+      "101": {
+        "pq": 0.23867086895064324,
+        "sq": 0.7160126068519297,
+        "rq": 0.3333333333333333
+      },
+      "102": {
+        "pq": 0.2618033217940876,
+        "sq": 0.8835862110550456,
+        "rq": 0.2962962962962963
+      },
+      "103": {
+        "pq": 0.35364960963482744,
+        "sq": 0.8841240240870686,
+        "rq": 0.4
+      },
+      "104": {
+        "pq": 0.3421116421083248,
+        "sq": 0.9408070157978932,
+        "rq": 0.36363636363636365
+      },
+      "105": {
+        "pq": 0.2673287829670448,
+        "sq": 0.7351541531593733,
+        "rq": 0.36363636363636365
+      },
+      "106": {
+        "pq": 0.08791278014726846,
+        "sq": 0.6813240461413306,
+        "rq": 0.12903225806451613
+      },
+      "107": {
+        "pq": 0.2019885440466284,
+        "sq": 0.747357612972525,
+        "rq": 0.2702702702702703
+      },
+      "108": {
+        "pq": 0.09132441353511132,
+        "sq": 0.8401846045230241,
+        "rq": 0.10869565217391304
+      },
+      "109": {
+        "pq": 0.25569263862908276,
+        "sq": 0.7031547562299776,
+        "rq": 0.36363636363636365
+      },
+      "110": {
+        "pq": 0.3747448784816024,
+        "sq": 0.7494897569632047,
+        "rq": 0.5
+      },
+      "111": {
+        "pq": 0.10034282700421941,
+        "sq": 0.6020569620253164,
+        "rq": 0.16666666666666666
+      },
+      "112": {
+        "pq": 0.09361411960073628,
+        "sq": 0.7749168789172058,
+        "rq": 0.12080536912751678
+      },
+      "113": {
+        "pq": 0.4913808533182024,
+        "sq": 0.8353474506409441,
+        "rq": 0.5882352941176471
+      },
+      "114": {
+        "pq": 0.9644000668844966,
+        "sq": 0.9644000668844966,
+        "rq": 1.0
+      },
+      "115": {
+        "pq": 0.2351902235413827,
+        "sq": 0.8156597114307528,
+        "rq": 0.2883435582822086
+      },
+      "116": {
+        "pq": 0.49013821817000014,
+        "sq": 0.7683247744286489,
+        "rq": 0.6379310344827587
+      },
+      "117": {
+        "pq": 0.743890328231854,
+        "sq": 0.8926683938782247,
+        "rq": 0.8333333333333334
+      },
+      "118": {
+        "pq": 0.32330947621362,
+        "sq": 0.824439164344731,
+        "rq": 0.39215686274509803
+      },
+      "119": {
+        "pq": 0.22113241412589835,
+        "sq": 0.8776192685621591,
+        "rq": 0.25196850393700787
+      },
+      "120": {
+        "pq": 0.028013184837224384,
+        "sq": 0.8158840083841602,
+        "rq": 0.034334763948497854
+      },
+      "121": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "122": {
+        "pq": 0.2754339494786308,
+        "sq": 0.9640188231752078,
+        "rq": 0.2857142857142857
+      },
+      "123": {
+        "pq": 0.00751167675617954,
+        "sq": 0.5971783021162734,
+        "rq": 0.012578616352201259
+      },
+      "124": {
+        "pq": 0.7313068784395156,
+        "sq": 0.8958509260884066,
+        "rq": 0.8163265306122449
+      },
+      "125": {
+        "pq": 0.11308917092973808,
+        "sq": 0.7307300275459999,
+        "rq": 0.15476190476190477
+      },
+      "126": {
+        "pq": 0.4810742084993373,
+        "sq": 0.7817455888114231,
+        "rq": 0.6153846153846154
+      },
+      "127": {
+        "pq": 0.35292508108764353,
+        "sq": 0.7373613301295409,
+        "rq": 0.47863247863247865
+      },
+      "128": {
+        "pq": 0.14791533429458867,
+        "sq": 0.9121445614832968,
+        "rq": 0.16216216216216217
+      },
+      "129": {
+        "pq": 0.4748150290342785,
+        "sq": 0.949630058068557,
+        "rq": 0.5
+      },
+      "130": {
+        "pq": 0.5238738201672798,
+        "sq": 0.9604353369733462,
+        "rq": 0.5454545454545454
+      },
+      "131": {
+        "pq": 0.05718472530521643,
+        "sq": 0.9721403301886793,
+        "rq": 0.058823529411764705
+      },
+      "132": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "133": {
+        "pq": 0.04962575470101779,
+        "sq": 0.9180764619688291,
+        "rq": 0.05405405405405406
+      },
+      "134": {
+        "pq": 0.06455018973829355,
+        "sq": 0.7041838880541115,
+        "rq": 0.09166666666666666
+      },
+      "135": {
+        "pq": 0.42934128842468305,
+        "sq": 0.7674052950582918,
+        "rq": 0.5594713656387665
+      },
+      "136": {
+        "pq": 0.13388713911123104,
+        "sq": 0.7100800056434932,
+        "rq": 0.18855218855218855
+      },
+      "137": {
+        "pq": 0.01987908907710723,
+        "sq": 0.9243776420854861,
+        "rq": 0.021505376344086023
+      },
+      "138": {
+        "pq": 0.015217106692390583,
+        "sq": 0.9358520615820208,
+        "rq": 0.016260162601626018
+      },
+      "139": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "140": {
+        "pq": 0.13587181778436716,
+        "sq": 0.7812629522601111,
+        "rq": 0.17391304347826086
+      },
+      "141": {
+        "pq": 0.038900308324768755,
+        "sq": 0.7780061664953751,
+        "rq": 0.05
+      },
+      "142": {
+        "pq": 0.02372876639097642,
+        "sq": 0.7988684684962061,
+        "rq": 0.0297029702970297
+      },
+      "143": {
+        "pq": 0.15502089182488282,
+        "sq": 0.907979509260028,
+        "rq": 0.17073170731707318
+      },
+      "144": {
+        "pq": 0.2026601294653528,
+        "sq": 0.8106405178614112,
+        "rq": 0.25
+      },
+      "145": {
+        "pq": 0.0,
+        "sq": 0,
+        "rq": 0.0
+      },
+      "146": {
+        "pq": 0.19687833271951033,
+        "sq": 0.8367329140579189,
+        "rq": 0.23529411764705882
+      },
+      "147": {
+        "pq": 0.26893519319429715,
+        "sq": 0.7592064303449628,
+        "rq": 0.3542319749216301
+      },
+      "148": {
+        "pq": 0.332914937699672,
+        "sq": 0.7753413680637098,
+        "rq": 0.4293785310734463
+      },
+      "149": {
+        "pq": 0.059548817245023485,
+        "sq": 0.8485706457415847,
+        "rq": 0.07017543859649122
+      }
+    },
+    "Things": {
+      "pq": 0.2553610351552861,
+      "sq": 0.7334293550825005,
+      "rq": 0.3110846305251879,
+      "n": 100
+    },
+    "Stuff": {
+      "pq": 0.3185654949321667,
+      "sq": 0.742398588961524,
+      "rq": 0.378575485651863,
+      "n": 50
+    }
+  },
+  "bbox": {
+    "AP": 0.0,
+    "AP50": 0.0,
+    "AP75": 0.0,
+    "APs": 0.0,
+    "APm": 0.0,
+    "APl": 0.0,
+    "AP-bed,beds": 0.0,
+    "AP-windowpane,window,windows": 0.0,
+    "AP-cabinet,cabinets,wall mounted cabine": 0.0,
+    "AP-person,child,girl,boy,woman,man,people,children,girls,boys,women,men": 0.0,
+    "AP-door,double door,doors": 0.0,
+    "AP-table,tables,tablecloth": 0.0,
+    "AP-curtain,drape,drapery,mantle,pall": 0.0,
+    "AP-chair,chairs": 0.0,
+    "AP-car,automobile,cars": 0.0,
+    "AP-painting,picture,paintings,pictures,wallart,framed canvas": 0.0,
+    "AP-sofa,couch,sofas,couches": 0.0,
+    "AP-shelf,shelves": 0.0,
+    "AP-mirror,mirrors": 0.0,
+    "AP-armchair,armchairs": 0.0,
+    "AP-seat,seats": 0.0,
+    "AP-fence,fencing": 0.0,
+    "AP-desk,desks": 0.0,
+    "AP-wardrobe,closet,press,wardrobes,closets": 0.0,
+    "AP-lamp,lamps": 0.0,
+    "AP-bathtub,bathing tub,bath,tub": 0.0,
+    "AP-railing,rail": 0.0,
+    "AP-cushion,cushions": 0.0,
+    "AP-box,boxes": 0.0,
+    "AP-column,pillar": 0.0,
+    "AP-signboard,sign,signboards,signs": 0.0,
+    "AP-chest of drawers,chest,bureau,dresser": 0.0,
+    "AP-counter": 0.0,
+    "AP-sink": 0.0,
+    "AP-fireplace,hearth,open fireplace": 0.0,
+    "AP-refrigerator,icebox": 0.0,
+    "AP-stairs,steps": 0.0,
+    "AP-case,display case,showcase,vitrine": 0.0,
+    "AP-pool table,billiard table,snooker table": 0.0,
+    "AP-pillow,pillows": 0.0,
+    "AP-screen door,shower door": 0.0,
+    "AP-bookcase": 0.0,
+    "AP-coffee table,cocktail table": 0.0,
+    "AP-toilet,commode,crapper,potty": 0.0,
+    "AP-flower,flowers": 0.0,
+    "AP-book,books": 0.0,
+    "AP-bench,benches": 0.0,
+    "AP-countertop,counter top,worktop": 0.0,
+    "AP-stove,kitchen stove,kitchen range,kitchen range,cooking stove": 0.0,
+    "AP-palm tree,palm trees": 0.0,
+    "AP-kitchen island": 0.0,
+    "AP-computer,computing machine,computing device,data processor,electronic computer,information processing system": 0.0,
+    "AP-swivel chair": 0.0,
+    "AP-boat": 0.0,
+    "AP-arcade machine,arcade machines": 0.0,
+    "AP-bus,autobus,double-decker,jitney,motorbus,motorcoach,omnibus,passenger vehicle": 0.0,
+    "AP-towel": 0.0,
+    "AP-light bulb,lightbulb,bulb,incandescent lamp,electric light,electric-light bulb": 0.0,
+    "AP-truck,motortruck": 0.0,
+    "AP-chandelier,pendant,pendent": 0.0,
+    "AP-awning,sunshade,sunblind": 0.0,
+    "AP-streetlight,street lamp": 0.0,
+    "AP-booth,cubicle,stall,kiosk": 0.0,
+    "AP-television receiver,television,television set,tv,tv set": 0.0,
+    "AP-airplane,aeroplane,airplanes,aeroplanes": 0.0,
+    "AP-apparel,wearing apparel,dress,clothes": 0.0,
+    "AP-pole": 0.0,
+    "AP-bannister,banister,balustrade,balusters,handrail": 0.0,
+    "AP-ottoman,pouf,pouffe,puff,hassock": 0.0,
+    "AP-bottle,bottles,water bottle": 0.0,
+    "AP-van": 0.0,
+    "AP-ship": 0.0,
+    "AP-fountain": 0.0,
+    "AP-washer,automatic washer,washing machine": 0.0,
+    "AP-plaything,toy,toys": 0.0,
+    "AP-stool,stools": 0.0,
+    "AP-barrel,cask,barrels,casks": 0.0,
+    "AP-basket,handbasket": 0.0,
+    "AP-bag,bags,gift bag,paper bag": 0.0,
+    "AP-minibike,motorbike": 0.0,
+    "AP-oven": 0.0,
+    "AP-ball,balls": 0.0,
+    "AP-food,solid food": 0.0,
+    "AP-step,stair": 0.0,
+    "AP-trade name,brand name,brand,marque": 0.0,
+    "AP-microwave,microwave oven": 0.0,
+    "AP-plant pots,plant pot,flower pot,flowerpot,planter": 0.0,
+    "AP-animal,animate being,dog,cat,horse,cow,sheep,zebra,girraffe,bird": 0.0,
+    "AP-bicycle,bike": 0.0,
+    "AP-dishwasher,dish washer,dishwashing machine": 0.0,
+    "AP-projection screen": 0.0,
+    "AP-sculpture,sculptures": 0.0,
+    "AP-exhaust hood": 0.0,
+    "AP-sconce,sconce lamp,sconce light": 0.0,
+    "AP-vase,vases": 0.0,
+    "AP-traffic light,traffic signal,traffic lights": 0.0,
+    "AP-tray,trays": 0.0,
+    "AP-ashcan,trash can,garbage can,wastebin,ash bin,ash-bin,ashbin,dustbin,trash barrel,trash bin": 0.0,
+    "AP-ceiling fan,floor fan": 0.0,
+    "AP-plate,plates": 0.0,
+    "AP-monitor,monitoring device,monitors": 0.0,
+    "AP-bulletin board,notice board": 0.0,
+    "AP-radiator": 0.0,
+    "AP-cup,cups,drinking glass,drinking glasses": 0.0,
+    "AP-clock": 0.0,
+    "AP-flag,flags": 0.0
+  },
+  "segm": {
+    "AP": 16.397726738952237,
+    "AP50": 26.632155906935314,
+    "AP75": 16.846887792841134,
+    "APs": 5.114397716614687,
+    "APm": 20.81302133634309,
+    "APl": 32.166862692914464,
+    "AP-bed,beds": 46.521847821945386,
+    "AP-windowpane,window,windows": 15.701348849929486,
+    "AP-cabinet,cabinets,wall mounted cabine": 8.269364857668492,
+    "AP-person,child,girl,boy,woman,man,people,children,girls,boys,women,men": 29.947381692912234,
+    "AP-door,double door,doors": 17.507613602851936,
+    "AP-table,tables,tablecloth": 15.790031628577145,
+    "AP-curtain,drape,drapery,mantle,pall": 22.019165886009855,
+    "AP-chair,chairs": 25.227345771550773,
+    "AP-car,automobile,cars": 34.215335781520615,
+    "AP-painting,picture,paintings,pictures,wallart,framed canvas": 15.938822471024098,
+    "AP-sofa,couch,sofas,couches": 48.36331982872274,
+    "AP-shelf,shelves": 8.180139489795643,
+    "AP-mirror,mirrors": 52.72559009947052,
+    "AP-armchair,armchairs": 27.711354447143883,
+    "AP-seat,seats": 4.880576064628456,
+    "AP-fence,fencing": 6.161503818815041,
+    "AP-desk,desks": 3.7820031662670304,
+    "AP-wardrobe,closet,press,wardrobes,closets": 24.306100142156755,
+    "AP-lamp,lamps": 11.223305738744761,
+    "AP-bathtub,bathing tub,bath,tub": 13.360337255621726,
+    "AP-railing,rail": 1.933604253291674,
+    "AP-cushion,cushions": 6.177754801397552,
+    "AP-box,boxes": 3.297910882452968,
+    "AP-column,pillar": 1.714004178698662,
+    "AP-signboard,sign,signboards,signs": 5.427543835186469,
+    "AP-chest of drawers,chest,bureau,dresser": 27.001436982874743,
+    "AP-counter": 3.2264569329667703,
+    "AP-sink": 27.87261647222522,
+    "AP-fireplace,hearth,open fireplace": 8.350517987547306,
+    "AP-refrigerator,icebox": 66.71153508983919,
+    "AP-stairs,steps": 11.670210457620378,
+    "AP-case,display case,showcase,vitrine": 1.8318291714929738,
+    "AP-pool table,billiard table,snooker table": 68.7228934621486,
+    "AP-pillow,pillows": 1.762330551026663,
+    "AP-screen door,shower door": 33.32010260825765,
+    "AP-bookcase": 0.3003892120483415,
+    "AP-coffee table,cocktail table": 23.60088133017141,
+    "AP-toilet,commode,crapper,potty": 49.93965306125226,
+    "AP-flower,flowers": 9.592167319995092,
+    "AP-book,books": 5.17986570662438,
+    "AP-bench,benches": 9.86520244404127,
+    "AP-countertop,counter top,worktop": 9.377380936983045,
+    "AP-stove,kitchen stove,kitchen range,kitchen range,cooking stove": 35.82973716367964,
+    "AP-palm tree,palm trees": 3.1874562517010014,
+    "AP-kitchen island": 2.444821101109247,
+    "AP-computer,computing machine,computing device,data processor,electronic computer,information processing system": 1.924586107314865,
+    "AP-swivel chair": 19.83912533070592,
+    "AP-boat": 20.01154905238814,
+    "AP-arcade machine,arcade machines": 4.5884664525244,
+    "AP-bus,autobus,double-decker,jitney,motorbus,motorcoach,omnibus,passenger vehicle": 44.65609522933179,
+    "AP-towel": 17.810915848322672,
+    "AP-light bulb,lightbulb,bulb,incandescent lamp,electric light,electric-light bulb": 0.7842352909584469,
+    "AP-truck,motortruck": 13.638251382824535,
+    "AP-chandelier,pendant,pendent": 14.96773264158651,
+    "AP-awning,sunshade,sunblind": 1.9246277441129616,
+    "AP-streetlight,street lamp": 0.14650458560171215,
+    "AP-booth,cubicle,stall,kiosk": 3.9627555061856223,
+    "AP-television receiver,television,television set,tv,tv set": 64.70755746456788,
+    "AP-airplane,aeroplane,airplanes,aeroplanes": 23.322676431191432,
+    "AP-apparel,wearing apparel,dress,clothes": 1.8572207408127732,
+    "AP-pole": 0.2037327733329345,
+    "AP-bannister,banister,balustrade,balusters,handrail": 0.4288894572119668,
+    "AP-ottoman,pouf,pouffe,puff,hassock": 33.20072557028165,
+    "AP-bottle,bottles,water bottle": 15.566237607537406,
+    "AP-van": 11.489229528599505,
+    "AP-ship": 29.108910891089106,
+    "AP-fountain": 37.70231409105823,
+    "AP-washer,automatic washer,washing machine": 14.843922528355296,
+    "AP-plaything,toy,toys": 12.178215378257987,
+    "AP-stool,stools": 11.086537960608473,
+    "AP-barrel,cask,barrels,casks": 4.146521795036647,
+    "AP-basket,handbasket": 8.584264386789012,
+    "AP-bag,bags,gift bag,paper bag": 5.320930391865848,
+    "AP-minibike,motorbike": 25.098988309529897,
+    "AP-oven": 26.38902570041004,
+    "AP-ball,balls": 13.12405228728217,
+    "AP-food,solid food": 1.4744039852832096,
+    "AP-step,stair": 0.18843277068804476,
+    "AP-trade name,brand name,brand,marque": 0.34026473798260376,
+    "AP-microwave,microwave oven": 64.01921227252333,
+    "AP-plant pots,plant pot,flower pot,flowerpot,planter": 4.34936875262157,
+    "AP-animal,animate being,dog,cat,horse,cow,sheep,zebra,girraffe,bird": 15.283080298123497,
+    "AP-bicycle,bike": 13.6911482291632,
+    "AP-dishwasher,dish washer,dishwashing machine": 43.47094768553117,
+    "AP-projection screen": 47.338110832804404,
+    "AP-sculpture,sculptures": 10.913031358312738,
+    "AP-exhaust hood": 1.4210723092053104,
+    "AP-sconce,sconce lamp,sconce light": 2.7058142344314966,
+    "AP-vase,vases": 21.973668665143045,
+    "AP-traffic light,traffic signal,traffic lights": 1.6061633104529582,
+    "AP-tray,trays": 2.679902298831864,
+    "AP-ashcan,trash can,garbage can,wastebin,ash bin,ash-bin,ashbin,dustbin,trash barrel,trash bin": 5.088290473738398,
+    "AP-ceiling fan,floor fan": 3.111811563399713,
+    "AP-plate,plates": 7.740374707278706,
+    "AP-monitor,monitoring device,monitors": 5.163463556863448,
+    "AP-bulletin board,notice board": 3.81018774071067,
+    "AP-radiator": 17.940965804067872,
+    "AP-cup,cups,drinking glass,drinking glasses": 6.364670900381942,
+    "AP-clock": 20.25822403347344,
+    "AP-flag,flags": 6.054474298545856
+  }
+}
