@@ -1,6 +1,6 @@
 _BASE_: ./fcclip_convnext_large_eval_ade20k.yaml
 MODEL:
-  RECLASSIFY_VOID: False
+  CLIP_TRUST_WEIGHT: 0.0
   META_ARCHITECTURE: "RECLIP"
   # backbone part.
   BACKBONE:
@@ -21,7 +21,7 @@ MODEL:
 SOLVER:
   IMS_PER_BATCH: 16
   BASE_LR: 0.0001
-  STEPS: (10000, 355092)
+  STEPS: (7000, 355092)
   #MAX_ITER: 368750
   #MAX_ITER: 55000
   WARMUP_FACTOR: 1.0
@@ -29,7 +29,7 @@ SOLVER:
   WEIGHT_DECAY: 0.05
   OPTIMIZER: "ADAMW"
   BACKBONE_MULTIPLIER: 0.1
-  CHECKPOINT_PERIOD: 500
+  CHECKPOINT_PERIOD: 300
   CLIP_GRADIENTS:
     ENABLED: True
     CLIP_TYPE: "full_model"
@@ -44,7 +44,7 @@ TRAIN:
     - "masks"
     - "labels"
   WITH_FC_CLIP_MASKS: True # Use FC-Clip masks during training instead of gt ones
-  SEG_HEAD: False # Requires WITH_FC_CLIP_MASKS. Enables tuning of seg head
+  SEG_HEAD: True # Requires WITH_FC_CLIP_MASKS. Enables tuning of seg head
   USE_TUNED_FEATURES_FOR_SEG_HEAD: True # Passes the tuned clip features to the segmentation head instead of the frozen ones
   USE_PRETRAINED_SEG_HEAD_WEIGHTS: False # Load FC-Clip weights for the segmentation head at init
   DETACH_SEG_HEAD: False # Detach the segmentation head from the Clip backbone
@@ -52,11 +52,15 @@ TEST:
   PERFECT_MASKS: False
   WITH_VOID: False
   WITH_FC_CLIP: True
-  EVAL_PERIOD: 500
+  EVAL_PERIOD: 300
 DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: True
   NUM_WORKERS: 2
 DATASETS:
+  #TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)
+  #TEST: ("openvocab_pascal_ctx459_sem_seg_val",)
   TEST: ("openvocab_ade20k_panoptic_val",)
-  #TEST: ("openvocab_mapillary_vistas_panoptic_val",)
+  #TEST: ("openvocab_ade20k_full_sem_seg_val",)
+  #TEST: ("openvocab_pascal20_sem_seg_val",)
+  #TEST: ("openvocab_pascal_ctx59_sem_seg_val",)
   #TEST: ("openvocab_cityscapes_fine_panoptic_val",)

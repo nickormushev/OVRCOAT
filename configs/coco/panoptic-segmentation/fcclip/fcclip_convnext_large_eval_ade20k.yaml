@@ -1,7 +1,7 @@
 _BASE_: ../maskformer2_R50_bs16_50ep.yaml
 MODEL:
   META_ARCHITECTURE: "FCCLIP"
-  RECLASSIFY_VOID: True
+  CLIP_TRUST_WEIGHT: 0.0
   SEM_SEG_HEAD:
     NAME: "FCCLIPHead"
   # backbone part.

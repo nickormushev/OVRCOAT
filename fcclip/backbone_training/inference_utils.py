@@ -10,8 +10,7 @@ def semantic_inference(mask_cls, mask_pred, test_perfect_masks, test_with_void, 
     semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
     return semseg
 
-def panoptic_inference(mask_cls, mask_pred, test_perfect_masks,
-                       reclassify_void, test_metadata, overlap_threshold, object_mask_threshold):
+def panoptic_inference(mask_cls, mask_pred, test_perfect_masks, test_metadata, overlap_threshold, object_mask_threshold):
     scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
 
     if not test_perfect_masks:

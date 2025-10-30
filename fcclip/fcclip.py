@@ -33,7 +33,6 @@ from .modeling.matcher import HungarianMatcher
 import cv2
 from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES, ADE20k_COLORS
 from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
-from fcclip.backbone_training.reclassify_void import reclassify_void_masks
 
 from .modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -200,7 +199,6 @@ class FCCLIP(nn.Module):
         pixel_mean: Tuple[float],
         pixel_std: Tuple[float],
         # inference
-        reclassify_void: bool,
         semantic_on: bool,
         panoptic_on: bool,
         instance_on: bool,
@@ -256,7 +254,6 @@ class FCCLIP(nn.Module):
         self.instance_on = instance_on
         self.panoptic_on = panoptic_on
         self.test_topk_per_image = test_topk_per_image
-        self.reclassify_void = reclassify_void
 
         if not self.semantic_on:
             assert self.sem_seg_postprocess_before_inference
@@ -404,7 +401,6 @@ class FCCLIP(nn.Module):
 
         return {
             "backbone": backbone,
-            "reclassify_void": cfg.MODEL.RECLASSIFY_VOID,
             "sem_seg_head": sem_seg_head,
             "criterion": criterion,
             "num_queries": cfg.MODEL.MASK_FORMER.NUM_OBJECT_QUERIES,
@@ -897,6 +893,9 @@ class FCCLIP(nn.Module):
 
             # This is used to filtering void predictions. Uses the Mask2Former results for is_void_prob
             is_void_prob = F.softmax(mask_cls_results, dim=-1)[..., -1:]
+            #max_clip_prob, _ = out_vocab_cls_probs.max(-1, keepdim=True)
+            #weight = 0.5
+            #is_void_prob = is_void_prob * (1 - weight * max_clip_prob)
             cls_prob_no_void = cls_results.softmax(-1)
             mask_cls_probs = torch.cat([
                 cls_prob_no_void * (1.0 - is_void_prob),
@@ -911,7 +910,7 @@ class FCCLIP(nn.Module):
                 align_corners=False,
             )
 
-            del outputs
+          #  del outputs
 
             processed_results = []
             for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
@@ -970,11 +969,6 @@ class FCCLIP(nn.Module):
                                                                                  mask_cls_result, out_vocab_cls_probs[0], gt_img, gt_ann)
 
                 
-                if self.reclassify_void:
-                    mask_cls_result = F.softmax(mask_cls_result, dim=-1)
-                    mask_cls_result = reclassify_void_masks(num_classes, mask_cls_result,
-                                                            out_vocab_cls_probs[0], out_vocab_cls_results[0],
-                                                            self.test_metadata.thing_dataset_id_to_contiguous_id, self.device)
                     
 
 
@@ -1025,14 +1019,9 @@ class FCCLIP(nn.Module):
 
     def panoptic_inference(self, mask_cls, mask_pred):
         use_oracle = self.test_cfg is not None and self.test_cfg.use_class_oracle
-        if use_oracle or self.reclassify_void:
-            scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
-        else:
-            scores, labels = F.softmax(mask_cls, dim=-1).max(-1) # For each pixel, get the class with the highest score
+        scores, labels = F.softmax(mask_cls, dim=-1).max(-1) # For each pixel, get the class with the highest score
 
         mask_pred = mask_pred.sigmoid()
-        if self.reclassify_void:
-            mask_pred = (mask_pred > 0.5)
 
         num_classes = len(self.test_metadata.stuff_classes)
         keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think

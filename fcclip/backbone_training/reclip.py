@@ -18,7 +18,7 @@ from detectron2.data import MetadataCatalog
 from detectron2.modeling import META_ARCH_REGISTRY, build_backbone, build_sem_seg_head, build_model
 from detectron2.modeling.backbone import Backbone
 from detectron2.modeling.postprocessing import sem_seg_postprocess
-from detectron2.structures import Boxes, ImageList, Instances
+from detectron2.structures import ImageList
 from detectron2.utils.memory import retry_if_cuda_oom
 from detectron2.checkpoint import DetectionCheckpointer
 
@@ -95,7 +95,7 @@ class RECLIP(nn.Module):
         panoptic_on: bool,
         instance_on: bool,
         test_topk_per_image: int,
-        reclassify_void: bool,
+        clip_trust_weight: bool,
         # FC-CLIP
         geometric_ensemble_alpha: float,
         geometric_ensemble_beta: float,
@@ -157,7 +157,8 @@ class RECLIP(nn.Module):
         self.instance_on = instance_on
         self.panoptic_on = panoptic_on
         self.test_topk_per_image = test_topk_per_image
-        self.reclassify_void = reclassify_void
+        self.clip_trust_weight = clip_trust_weight
+        print(self.clip_trust_weight)
 
         self.train_with_fc_clip_masks = train_with_fc_clip_masks
         self.train_seg_head = train_seg_head
@@ -374,7 +375,7 @@ class RECLIP(nn.Module):
             "backbone": backbone,
             "use_dist_loss": not cfg.MODEL.BACKBONE.FREEZE, # If tuning backbone, use distillation loss
             "weight_dict": weight_dict,
-            "reclassify_void": cfg.MODEL.RECLASSIFY_VOID,
+            "clip_trust_weight": cfg.MODEL.CLIP_TRUST_WEIGHT,
             "frozen_backbone": frozen_backbone,
             "void_embedding": void_embedding,
             "sem_seg_head": sem_seg_head,
@@ -552,8 +553,7 @@ class RECLIP(nn.Module):
     def add_void_probability(self, cls_results, mask2former_cls_res, out_vocab_cls_probs):
         is_void_prob = F.softmax(mask2former_cls_res, dim=-1)[..., -1:]
         max_clip_prob, _ = out_vocab_cls_probs.max(-1, keepdim=True)
-        weight = 0.5
-        is_void_prob = is_void_prob * (1 - weight * max_clip_prob)
+        is_void_prob = is_void_prob * (1 - self.clip_trust_weight * max_clip_prob)
         mask_cls_probs = torch.cat([
             cls_results * (1.0 - is_void_prob),
             is_void_prob], dim=-1)
@@ -566,7 +566,7 @@ class RECLIP(nn.Module):
                                             oov_cls_probs, mask_for_pooling)
         elif self.test_with_void:
             return self.add_void_probability(oov_cls_probs,
-                                        mask_2_former_outputs["pred_logits"])
+                                        mask_2_former_outputs["pred_logits"], oov_cls_probs)
         return oov_cls_probs
 
     def test_with_imperfect_masks(self, clip_feature, frozen_features,
@@ -716,7 +716,7 @@ class RECLIP(nn.Module):
         # Panoptic segmentation inference
         if self.panoptic_on:
             panoptic_r = retry_if_cuda_oom(panoptic_inference)(mask_cls_result, mask_pred_result, self.test_perfect_masks,
-                       self.reclassify_void, self.test_metadata, self.overlap_threshold, self.object_mask_threshold)
+                                                self.test_metadata, self.overlap_threshold, self.object_mask_threshold)
             result["panoptic_seg"] = panoptic_r
 
         # Instance segmentation inference
