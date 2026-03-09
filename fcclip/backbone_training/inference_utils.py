@@ -1,10 +1,24 @@
 import torch
 from detectron2.structures import Boxes, Instances
 
-def semantic_inference(mask_cls, mask_pred, test_perfect_masks, test_with_void, test_with_fc_clip):
+def semantic_inference(mask_cls, mask_pred, test_perfect_masks, test_with_void, test_with_fc_clip, test_metadata, object_mask_threshold, sim):
+    # Try to discard masks
+    # Pixels no label at all. Any mask that is void multiply the probabilities by 10^-3
+    scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
+
+
+    num_classes = len(test_metadata.stuff_classes)
+    keep = (labels != num_classes) & (scores > object_mask_threshold)
+    
+    # Create a multiplier: 1 for good masks, 1e-1 for discarded masks
+    discard_multiplier = keep.float() + (~keep).float() * 0.1  
+    #mask_cls = mask_cls[keep] * discard_multiplier
+
     if not test_perfect_masks:
         if test_with_void or test_with_fc_clip:
             mask_cls = mask_cls[..., :-1]
+            scores, labels = mask_cls.max(-1)
+            mask_cls = mask_cls * sim[labels]
         mask_pred = mask_pred.sigmoid()
 
     semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
