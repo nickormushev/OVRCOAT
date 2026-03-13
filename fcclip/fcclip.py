@@ -7,18 +7,9 @@ Reference: https://github.com/facebookresearch/Mask2Former/blob/main/mask2former
 from typing import Tuple
 
 import torch
-import random
-import os
 from torch import nn
 from torch.nn import functional as F
 
-import numpy as np
-import matplotlib.pyplot as plt
-import json
-import pandas as pd
-from collections import defaultdict
-
-from panopticapi.utils import rgb2id
 from detectron2.config import configurable
 from detectron2.data import MetadataCatalog
 from detectron2.modeling import META_ARCH_REGISTRY, build_backbone, build_sem_seg_head
@@ -28,11 +19,8 @@ from detectron2.structures import Boxes, ImageList, Instances, BitMasks
 from detectron2.utils.memory import retry_if_cuda_oom
 
 from .modeling.criterion import SetCriterion
-from matplotlib import cm
 from .modeling.matcher import HungarianMatcher
-import cv2
-from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES, ADE20k_COLORS
-from sklearn.metrics import f1_score, accuracy_score, precision_score, recall_score
+
 
 from .modeling.transformer_decoder.fcclip_transformer_decoder import MaskPooling, get_classification_logits
 VILD_PROMPT = [
@@ -52,129 +40,6 @@ VILD_PROMPT = [
     "There is a large {} in the scene.",
 ]
 
-MATCHED = 0
-OBJECT_COUNT = 0
-
-# ADE20K specific. Is number of classes - 1 otherwise
-VOID_CATEGORY_ID = 150
-
-def get_unique_color(unique_id, prev_colors, min_distance=20):
-    np.random.seed(unique_id)
-    color = np.random.randint(100, 255, 3).tolist()
-    while True:
-        color = np.random.randint(100, 255, 3).tolist()
-        if all(np.linalg.norm(np.array(color) - np.array(prev_color)) >= min_distance for prev_color in prev_colors):
-            break
-    return color
-
-def calculate_entropy(probs):
-    return -np.sum(probs * np.log(probs + 1e-6))
-
-from skimage.measure import regionprops, perimeter, label
-def calculate_mask_properties(mask):
-
-    # Calculate region properties
-    binary_mask = (mask.sigmoid() > 0.5)    
-    bin_area = binary_mask.sum().item()
-
-    if bin_area == 0:
-        return 0, 0, 0, bin_area
-
-    binary_mask = binary_mask.cpu().numpy().astype(np.uint8)
-    # labeled_mask = label(binary_mask)  This is not needed since we have only one region in the mask
-    # It assigns unique labels to the different regions in the mask
-    props = regionprops(binary_mask)[0]
-    
-    # Eccentricity
-    eccentricity = props.eccentricity
-    
-    # Compactness (also known as Roundness or Circularity)
-    area = props.area
-    perim = perimeter(binary_mask)
-    compactness = (perim ** 2) / (4 * np.pi * area)
-    
-    # Perimeter-to-Area Ratio
-    perimeter_to_area_ratio = perim / area
-    
-    return eccentricity, compactness, perimeter_to_area_ratio, area
-
-class MissclassificationInfo:
-    def __init__(self):
-        self.seen_missclassified_as_void_count = 0
-        self.seen_missclassified_as_seen_class_count = 0
-        self.seen_missclassified_as_unseen_class_count = 0
-    
-        self.unseen_missclassified_as_void_count = 0
-        self.unseen_missclassified_as_seen_class_count = 0
-        self.unseen_missclassified_as_unseen_class_count = 0
-
-        self.void_clip_class = []
-        self.void_gt_class = []
-
-    def add(self, predicted_class, seen_classes, gt_class, num_classes):
-        is_seen = seen_classes[gt_class]
-        is_void = predicted_class == num_classes - 1
-
-        is_pred_seen = seen_classes[predicted_class] if not is_void else False
-
-        if is_seen:
-            if is_void:
-                self.seen_missclassified_as_void_count += 1
-            elif is_pred_seen:
-                self.seen_missclassified_as_seen_class_count += 1
-            else:
-                self.seen_missclassified_as_unseen_class_count += 1
-        else:
-            if is_void:
-                self.unseen_missclassified_as_void_count += 1
-            elif is_pred_seen:
-                self.unseen_missclassified_as_seen_class_count += 1
-            else:
-                self.unseen_missclassified_as_unseen_class_count += 1
-
-    def save_confusion_matrix(self, filename):
-        with open(filename, 'w') as f:
-            f.write("Confusion Matrix:\n")
-            f.write("            | Predicted Void | Predicted Seen | Predicted Unseen\n")
-            f.write("-----------------------------------------------------------------------\n")
-            f.write(f"Seen       | {self.seen_missclassified_as_void_count:>15} | {self.seen_missclassified_as_seen_class_count:>14} | {self.seen_missclassified_as_unseen_class_count:>15}\n")
-            f.write(f"Unseen     | {self.unseen_missclassified_as_void_count:>15} | {self.unseen_missclassified_as_seen_class_count:>14} | {self.unseen_missclassified_as_unseen_class_count:>15}\n")
-
-    def print_confusion_matrix(self):
-        print("Confusion Matrix:")
-        print("            | Predicted Void | Predicted Seen | Predicted Unseen")
-        print("-----------------------------------------------------------------------")
-        print(f"Seen       | {self.seen_missclassified_as_void_count:>15} | {self.seen_missclassified_as_seen_class_count:>14} | {self.seen_missclassified_as_unseen_class_count:>15}")
-        print(f"Unseen     | {self.unseen_missclassified_as_void_count:>15} | {self.unseen_missclassified_as_seen_class_count:>14} | {self.unseen_missclassified_as_unseen_class_count:>15}")
-    
-    def print_void_clip_metrics(self, file = "./tests/void_classification.csv"):
-        # Save predictions to file for easy reproduction of results
-        void_clip_labels = [ADE20K_150_CATEGORIES[category]['name'].split(',')[0] for category in self.void_clip_class]
-        void_gt_labels = [ADE20K_150_CATEGORIES[category]['name'].split(',')[0] for category in self.void_gt_class]
-        df = pd.DataFrame(list(zip(void_clip_labels, void_gt_labels)), columns=['clip', 'gt'])
-        df.to_csv(file)
-
-        print("Void classification metrics:")
-        print(f"Accuracy: {accuracy_score(self.void_gt_class, self.void_clip_class)}")
-        print(f"Precision: {precision_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
-        print(f"Recall: {recall_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
-        print(f"F1: {f1_score(self.void_gt_class, self.void_clip_class, average='weighted')}")
-
-class CategoryInfo:
-    def __init__(self, total = 0, miss_count = 0, detected = 0):
-        self.total = total
-        self.miss_count = miss_count
-        self.detected = detected
-
-    def __str__(self):
-        return f'{self.name}: {self.total} - {self.miss_count}'
-
-    def __repr__(self):
-        return str(self)
-
-CATEGORIES_INFO = defaultdict(CategoryInfo)
-MISSCLASSIFICATION_INFO = MissclassificationInfo()
-MISSCLASSIFICATION_INFO_BEST_MASKS = MissclassificationInfo()
 
 @META_ARCH_REGISTRY.register()
 class FCCLIP(nn.Module):
@@ -182,7 +47,7 @@ class FCCLIP(nn.Module):
     Main class for mask classification semantic segmentation architectures.
     """
 
-    @configurable # calls the configurable wrapper in detectron2.config before init
+    @configurable
     def __init__(
         self,
         *,
@@ -340,9 +205,7 @@ class FCCLIP(nn.Module):
                 # this is needed to avoid oom, which may happen when num of class is large
                 bs = 128
                 for idx in range(0, len(self.test_class_names), bs):
-                    # For each class generates embeddings for each template with the text encoder
                     text_classifier.append(self.backbone.get_text_classifier(self.test_class_names[idx:idx+bs], self.device).detach())
-                # The generated  embedings are concatenated
                 text_classifier = torch.cat(text_classifier, dim=0)
 
                 # average across templates and normalization.
@@ -350,13 +213,10 @@ class FCCLIP(nn.Module):
                 text_classifier = text_classifier.reshape(text_classifier.shape[0]//len(VILD_PROMPT), len(VILD_PROMPT), text_classifier.shape[-1]).mean(1)
                 text_classifier /= text_classifier.norm(dim=-1, keepdim=True)
                 self.test_text_classifier = text_classifier
-            # First is the embeddings for the prompts with each class 
-            # and the second is the number of templates per class used
             return self.test_text_classifier, self.test_num_templates
 
-    @classmethod 
-    def from_config(cls, cfg): # Called by configurable wrapper before init to get arguments which it passes to init
-        # This is the frozen CLIP backbone
+    @classmethod
+    def from_config(cls, cfg):
         backbone = build_backbone(cfg)
         sem_seg_head = build_sem_seg_head(cfg, backbone.output_shape())
 
@@ -429,358 +289,6 @@ class FCCLIP(nn.Module):
     @property
     def device(self):
         return self.pixel_mean.device
-    
-    # Attempt 1 to fix mask classification by applying the mask to the gt image and then finding the category
-    # by the amount of pixels of that category in that area
-    def fix_mask_classification(self, masks, gt_img, gt_ann, num_classes):
-        si = gt_ann['segments_info']
-        segments = {s['id']: s for s in si}
-        area_threshold = 0.5
-        new_mask_cls = torch.zeros((masks.shape[0], num_classes) , device=self.device)
-
-        for i, mask in enumerate(masks):
-            # Binarise the mask
-            bin_mask = (mask.sigmoid() > 0.5).to(torch.int64)
-
-            # All the 1s in the mask make the area so we just have to sum
-            bin_mask_area = bin_mask.sum()
-            if bin_mask_area == 0:
-                continue
-
-            # I add 1 so that 0 is not a possible value for gt_img
-            segment = (gt_img + 1) * bin_mask
-            unique_labels, counts = torch.unique(segment, return_counts=True)
-
-            # Remove 0 since that is not part of the mask
-            non_zero_ids = unique_labels != 0
-            counts = counts[non_zero_ids]
-            # Remove 1 to restore old values of gt_img since 0 is already counted and removed
-            unique_labels = unique_labels[non_zero_ids] - 1
-
-            max_idx = counts.argmax()
-
-            max_count = counts[max_idx]
-            
-            area_score = max_count / bin_mask_area
-            # Should we add for all labels the area_score as a probability
-            # Basically based on how much area they cover we add the probability
-            if area_score > area_threshold:
-                # Not clear what this value should be beacause after softmax is used so I can't use directly proabilities
-                for label in unique_labels:
-                    label_cpu = label.item()
-                    if (label_cpu == 0): continue
-                    category = segments[label_cpu]['category_id']
-                    new_mask_cls[i, category] = area_score
-            else:
-                # Should I make these 1. I guess?
-                new_mask_cls[i, num_classes - 1] = 1
-            
-        return new_mask_cls
-
-    # Method used for debugging
-    def save_mask(self, mask, name):
-        plt.imshow(mask.cpu().detach().numpy(), cmap='gray')
-        plt.colorbar()
-        plt.title(f'{name} mask')
-        plt.savefig(f'./tests/{name}.png')
-        plt.close()
-
-    # Method used for debugging
-    def save_targets(self, targets):
-        targets = targets[0]
-        for idx, (label, mask) in enumerate(zip(targets['labels'], targets['masks'])):
-            if label == 41:
-                self.save_mask(mask, f'box_{idx}')
-            if label == 7:
-                self.save_mask(mask, 'mask')
-    
-    def get_mask_unique_gt_ids(self, binary_mask, gt_img):
-        ## add + 1 to gt_img to avoid counting void segments
-        mask_gt_ids, counts = torch.unique(binary_mask * (gt_img + 1), return_counts=True)
-        counts = counts[mask_gt_ids != 0]
-        mask_gt_ids = mask_gt_ids[mask_gt_ids != 0] - 1
-
-        return mask_gt_ids, counts
-    
-    def get_iou_with_mask(self, binary_mask, binary_mask_area, gt_img, id):
-        best_mask_area = (gt_img == id).sum()
-
-        intersection = (binary_mask * (gt_img == id)).sum()
-        union = binary_mask_area + best_mask_area - intersection
-        iou = intersection / union
-
-        return iou
-
-    def get_mask_iou_and_gt_category(self, mask, gt_img, gt_ann):
-        segments_info = gt_ann['segments_info']
-        binary_mask = (mask.sigmoid() > 0.5)
-        binary_mask_area = binary_mask.sum()
-
-        # Masks sometimes don't focus anything. 
-        # I believe they are looking for objects not present in the image
-        if binary_mask_area == 0:
-            return 0, None
-
-        mask_gt_ids, counts = self.get_mask_unique_gt_ids(binary_mask, gt_img)
-
-        best_mask_category_idx = torch.argmax(counts)
-        best_gt_id = mask_gt_ids[best_mask_category_idx]
-
-        iou = self.get_iou_with_mask(binary_mask, binary_mask_area, gt_img, best_gt_id)
-
-        # I validated that segment ids are never 0 in validation set at least
-        # So this means that the mask is not overlapping with any object but with background
-        # So we return void
-        if best_gt_id == 0:
-            return iou, VOID_CATEGORY_ID
-
-        for si in segments_info:
-            if si['id'] == best_gt_id:
-                best_gt_category = si['category_id']
-                break
-        
-        return iou, best_gt_category
-
-    # Oracle 3 Use CLIP on background masks if the category is the same as the gt one
-    def fix_mask_classification_with_clip(self, masks, num_classes, pred_clfs, clip_preds, gt_img, gt_ann, validate=True):
-        pred_clfs_np = pred_clfs.cpu().detach().numpy()
-        clip_preds_np = clip_preds.cpu().detach().numpy()
-        new_mask_cls = pred_clfs
-
-        for i, mask in enumerate(masks):
-            pred_is_background = np.argmax(pred_clfs_np[i]) == num_classes - 1
-            iou, best_category = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
-            clip_category = np.argmax(clip_preds_np[i])
-
-            # checks if CLIP classification is good. second one doesn't
-            validated = (not validate or clip_category == best_category)
-            if pred_is_background and iou > 0.5 and validated:
-                new_mask_cls[i, 0:num_classes - 1] = 0
-                new_mask_cls[i, clip_category] = 1
-        
-        return new_mask_cls
-    
-    def confusion_matrix_and_void_clip(self, masks, gt_img, gt_ann, num_classes, pred_clfs, cat_overlapping, clip_preds):
-        clip_preds_np = clip_preds.cpu().detach().numpy()
-        pred_clfs_np = pred_clfs.cpu().detach().numpy()
-
-        for i, mask in enumerate(masks):
-            iou, best_gt_category = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
-            if iou > 0.5 and best_gt_category != VOID_CATEGORY_ID:
-                global MISSCLASSIFICATION_INFO
-                # This is for metrics gathering
-                pred_clf = np.argmax(pred_clfs_np[i])
-
-                if self.test_cfg.calculate_confusion_matrix:
-                    # Check if missclassified
-                    if pred_clf != best_gt_category:
-                        MISSCLASSIFICATION_INFO.add(pred_clf, cat_overlapping, best_gt_category, num_classes)
-
-                if self.test_cfg.calculate_void_clip_classifications:
-                    pred_clip = np.argmax(clip_preds_np[i])
-                    if pred_clf == num_classes - 1:
-                        MISSCLASSIFICATION_INFO.void_clip_class.append(pred_clip)
-                        MISSCLASSIFICATION_INFO.void_gt_class.append(best_gt_category)
-
-    # oracle 2 uses hungarian matching to predict correct class
-    def fix_mask_classification_with_matching(self, masks, gt_ann, num_classes, indices,
-                                        gt_img, pred_clfs, cat_overlapping, clip_preds):
-        pred_clfs_np = pred_clfs.cpu().detach().numpy()
-        clip_preds_np = clip_preds.cpu().detach().numpy()
-        new_mask_cls = torch.zeros((masks.shape[0], num_classes) , device=self.device)
-        segments_info = gt_ann['segments_info']
-        preds_idx, targets_idx = indices
-        map_to_targets = {pred.item(): target.item() for pred, target in zip(preds_idx, targets_idx)}
-
-        for i, mask in enumerate(masks):
-            if i not in map_to_targets.keys():
-                new_mask_cls[i, num_classes - 1] = 1
-                continue
-
-            target_idx = map_to_targets[i]
-            tgt_mask = (gt_img == segments_info[target_idx]['id'])
-            src_mask = (mask.sigmoid() > 0.5)
-
-            intersection = (src_mask * tgt_mask).sum().item()
-            union = (src_mask.sum().item() + tgt_mask.sum().item() - intersection)
-            iou =  intersection / union
-
-            gt_category = segments_info[target_idx]['category_id']
-
-            global MISSCLASSIFICATION_INFO_BEST_MASKS
-
-            pred_clf = np.argmax(pred_clfs_np[i])
-            # This is for metrics gathering
-            if self.test_cfg.calculate_confusion_matrix_best and iou > 0.5:
-                # Check if missclassified
-                if pred_clf != gt_category:
-                    MISSCLASSIFICATION_INFO_BEST_MASKS.add(pred_clf, cat_overlapping, gt_category, num_classes)
-                
-            if self.test_cfg.calculate_void_clip_classifications_best and iou > 0.5:
-                pred_clip = np.argmax(clip_preds_np[i])
-                if pred_clf == num_classes - 1:
-                    MISSCLASSIFICATION_INFO_BEST_MASKS.void_clip_class.append(pred_clip)
-                    MISSCLASSIFICATION_INFO_BEST_MASKS.void_gt_class.append(gt_category)
-
-
-            # Use IoU as the score for the category so we can use it later 
-            # when deciding which mask we prefer
-            new_mask_cls[i, gt_category] = iou
-        
-        return new_mask_cls
-    
-
-    def highlight_img_segments(self, gt_img, gt_ann, missed_ids, filename):
-        gt_img_np = gt_img.cpu().numpy()
-       
-        highlighted_img = cv2.imread(gt_ann['file_name'])
-        text_img = np.zeros((*gt_img_np.shape, 4), dtype=np.uint8)
-
-        unique_ids = np.unique(gt_img_np)
-
-        fog_overlay = np.zeros_like(highlighted_img)
-        fog_mask = np.zeros_like(gt_img_np, dtype=bool)
-
-        prev_color = []
-        for unique_id in unique_ids:
-            mask = gt_img_np == unique_id
-            if unique_id == 0:
-                continue
-
-            if unique_id not in missed_ids.keys():
-                continue
-
-            (category, pred_mask, iou) = missed_ids[unique_id]
-            pred_mask = pred_mask.cpu().numpy()
-            label = f"{ADE20K_150_CATEGORIES[category]['name'].split(',')[0]}"
-            
-            y, x = np.where(mask)
-            if len(y) > 0 and len(x) > 0:
-                centroid_y = int(np.mean(y))
-                centroid_x = int(np.mean(x))
-                text_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
-                text_w, text_h = text_size
-
-                top_left = (max(0, centroid_x), max(0, centroid_y - text_h))
-                bottom_right = (min(text_img.shape[1], centroid_x + text_w), min(text_img.shape[0], centroid_y))
-
-                cv2.rectangle(text_img, top_left, bottom_right, (0, 0, 0, 123), cv2.FILLED)
-                cv2.putText(text_img, label, (centroid_x, centroid_y), cv2.FONT_HERSHEY_SIMPLEX,
-                             0.4, (255, 255, 255, 123), thickness=1, lineType=cv2.LINE_AA)
-
-            if iou < 0.1:
-                fog_overlay[mask] = [0, 0, 0] #ADE20k_COLORS[category] does not have [0,0,0]
-                fog_mask[mask] = True
-            else:
-                color = get_unique_color(unique_id, prev_color)
-                prev_color.append(color)
-                fog_overlay[pred_mask] = color #ADE20k_COLORS[category]
-                fog_mask[pred_mask] = True
-
-        alpha = 0.8  # Transparency factor
-        highlighted_img[fog_mask] = cv2.addWeighted(highlighted_img[fog_mask], 1-alpha, fog_overlay[fog_mask], alpha, 0)
-
-        b_channel, g_channel, r_channel, a_channel = cv2.split(text_img)
-        text_img_rgb = cv2.merge((b_channel, g_channel, r_channel))
-        mask = a_channel != 0
-
-        highlighted_img[mask] = cv2.addWeighted(highlighted_img[mask], 0.2, text_img_rgb[mask], 0.8, 0)
-        output_file = "./tests/highlighted_missed_objects_pred_mask/" + filename
-        cv2.imwrite(output_file, highlighted_img)
-        
-    def evaluate(self, matched_indices, masks, gt_ann, gt_img):
-        global OBJECT_COUNT
-        OBJECT_COUNT += len(gt_ann['segments_info'])
-        current_not_matched = {}
-
-        for match in zip(*matched_indices):
-            mask_idx, gt_index = match
-
-            mask = masks[mask_idx]
-            binary_mask = (mask.sigmoid() > 0.5)
-
-            si = gt_ann['segments_info'][gt_index]
-            object_id = si['id']
-
-            binary_mask_area = binary_mask.sum().item()
-
-            iou = self.get_iou_with_mask(binary_mask, binary_mask_area, gt_img, object_id)
-
-            CATEGORIES_INFO[si['category_id']].total += 1
-
-            if iou > 0.5:
-                global MATCHED
-                MATCHED += 1
-            else:
-                current_not_matched[si['id']] = (si['category_id'], binary_mask, iou)
-                CATEGORIES_INFO[si['category_id']].miss_count += 1
-
-        if self.test_cfg.highlight_missed and len(current_not_matched) > 0:
-            self.highlight_img_segments(gt_img, gt_ann, current_not_matched, gt_ann['image_id'] + ".png")
-
-    def void_histogram_data(self, masks, preds, preds_no_void, clip_pred, mask2former_preds, gt_img, gt_ann, void_prob):
-        np_preds = preds.cpu().detach().numpy()
-        np_clip = clip_pred.cpu().detach().numpy()
-        np_mask2former = mask2former_preds.cpu().detach().numpy()
-        np_void_prob = void_prob.cpu().detach().numpy()
-        np_preds_no_void = preds_no_void.cpu().detach().numpy()
-
-        df = pd.DataFrame(columns=['gt_category',
-                'pred_category_1', 'pred_prob_1', 'pred_category_2', 'pred_prob_2',
-                'pred_no_void_category_1', 'pred_no_void_prob_1', 'pred_no_void_category_2', 'pred_no_void_prob_2',
-                'clip_category_1', 'clip_prob_1', 'clip_category_2','clip_prob_2',
-                'mask2former_category_1', 'mask2former_prob_1', 'mask2former_category_2', 'mask2former_prob_2',
-                'gt_iou', 'void_prob', 'mask_area', 'entropy_pred', 'entropy_clip', 'entropy_mask2former', 'entropy_preds_no_void',
-                'eccentricity', 'compactness', 'perimeter_to_area_ratio'])
-
-        for i, mask in enumerate(masks):
-            iou, gt_cat = self.get_mask_iou_and_gt_category(mask, gt_img, gt_ann)
-
-            if gt_cat is None:
-                gt_cat = VOID_CATEGORY_ID
-
-            pred_cat = np.argmax(np_preds[i])
-            pred_cat_prob = np_preds[i, pred_cat]
-            pred_cat_second_best = np.argsort(np_preds[i])[-2]
-            pred_cat_second_best_prob = np_preds[i, pred_cat_second_best]
-
-            preds_no_void_cat = np.argmax(np_preds_no_void[i])
-            preds_no_void_cat_prob = np_preds_no_void[i, preds_no_void_cat]
-            preds_no_void_cat_second_best = np.argsort(np_preds_no_void[i])[-2]
-            preds_no_void_cat_second_best_prob = np_preds_no_void[i, preds_no_void_cat_second_best]
-
-            clip_cat = np.argmax(np_clip[i])
-            clip_cat_prob = np_clip[i, clip_cat]
-            clip_cat_second_best = np.argsort(np_clip[i])[-2]
-            clip_cat_second_best_prob = np_clip[i, clip_cat_second_best]
-
-            mask2former_cat = np.argmax(np_mask2former[i])
-            mask2former_cat_prob = np_mask2former[i, mask2former_cat]
-            mask2former_cat_second_best = np.argsort(np_mask2former[i])[-2]
-            mask2former_cat_second_best_prob = np_mask2former[i, mask2former_cat_second_best]
-            if iou != 0:
-                iou = iou.item()
-
-            eccentricity, compactness, perimeter_to_area_ratio, mask_area = calculate_mask_properties(mask)
-            
-            df_temp = pd.DataFrame({'gt_category': gt_cat, 'pred_category_1': pred_cat, 'pred_prob_1': pred_cat_prob,
-                            'pred_category_2': pred_cat_second_best, 'pred_prob_2': pred_cat_second_best_prob,
-                            'pred_no_void_category_1': preds_no_void_cat, 'pred_no_void_prob_1': preds_no_void_cat_prob,
-                            'pred_no_void_category_2': preds_no_void_cat_second_best, 'pred_no_void_prob_2': preds_no_void_cat_second_best_prob,
-                            'clip_category_1': clip_cat, 'clip_prob_1': clip_cat_prob, 'clip_category_2': clip_cat_second_best,
-                            'clip_prob_2': clip_cat_second_best_prob, 'mask2former_category_1': mask2former_cat,
-                            'mask2former_prob_1': mask2former_cat_prob, 'mask2former_category_2': mask2former_cat_second_best,
-                            'mask2former_prob_2': mask2former_cat_second_best_prob,
-                            'gt_iou': iou, 'void_prob': np_void_prob[i].item(), 'mask_area': mask_area,
-                            'entropy_pred': calculate_entropy(np_preds[i]), 'entropy_clip': calculate_entropy(np_clip[i]),
-                            'entropy_mask2former': calculate_entropy(np_mask2former[i]), 'entropy_preds_no_void': calculate_entropy(np_preds_no_void[i]),
-                            'eccentricity': eccentricity, 'compactness': compactness, 'perimeter_to_area_ratio': perimeter_to_area_ratio
-                        }, index=[0])
-            
-            df = pd.concat([df, df_temp])
-        
-        output_path='./tests/void_histogram_data_3.csv'
-        df.to_csv(output_path, mode='a', header=not os.path.exists(output_path))
 
     def forward(self, batched_inputs):
         """
@@ -810,18 +318,15 @@ class FCCLIP(nn.Module):
         """
         images = [x["image"].to(self.device) for x in batched_inputs]
         images = [(x - self.pixel_mean) / self.pixel_std for x in images]
-        # ImageList stores images in varying shapes by padding them to same size
         images = ImageList.from_tensors(images, self.size_divisibility)
 
-        # This is the frozen CLIP backbone
         features = self.backbone(images.tensor)
         text_classifier, num_templates = self.get_text_classifier()
-        # What does query_feat do? Append void class weight . 
-        # This I think is like the void embedding with the templates
+        # Append void class weight
         text_classifier = torch.cat([text_classifier, F.normalize(self.void_embedding.weight, dim=-1)], dim=0)
         features['text_classifier'] = text_classifier
         features['num_templates'] = num_templates
-        outputs = self.sem_seg_head(features) # outputs is masks with their class. Aux contains masks from each hidden layer as well
+        outputs = self.sem_seg_head(features)
 
         if self.training:
             # mask classification target
@@ -846,26 +351,25 @@ class FCCLIP(nn.Module):
             mask_pred_results = outputs["pred_masks"]
 
             # We ensemble the pred logits of in-vocab and out-vocab
-            clip_feature = features["clip_vis_dense"] # Last layer/output of features of ConvNeXt/CLIP
+            clip_feature = features["clip_vis_dense"]
             mask_for_pooling = F.interpolate(mask_pred_results, size=clip_feature.shape[-2:],
                                                 mode='bilinear', align_corners=False)
             if "convnext" in self.backbone.model_name.lower():
-                pooled_clip_feature = self.mask_pooling(clip_feature, mask_for_pooling) # Apply pooling with mask and get embedding
+                pooled_clip_feature = self.mask_pooling(clip_feature, mask_for_pooling)
                 pooled_clip_feature = self.backbone.visual_prediction_forward(pooled_clip_feature)
             elif "rn" in self.backbone.model_name.lower():
                 pooled_clip_feature = self.backbone.visual_prediction_forward(clip_feature, mask_for_pooling)
             else:
                 raise NotImplementedError
 
-            out_vocab_cls_results = get_classification_logits(pooled_clip_feature, text_classifier,
-                                                 self.backbone.clip_model.logit_scale, num_templates)
+            out_vocab_cls_results = get_classification_logits(pooled_clip_feature, text_classifier, self.backbone.clip_model.logit_scale, num_templates)
             in_vocab_cls_results = mask_cls_results[..., :-1] # remove void
             out_vocab_cls_results = out_vocab_cls_results[..., :-1] # remove void
 
             # Reference: https://github.com/NVlabs/ODISE/blob/main/odise/modeling/meta_arch/odise.py#L1506
             out_vocab_cls_probs = out_vocab_cls_results.softmax(-1)
             in_vocab_cls_results = in_vocab_cls_results.softmax(-1)
-            category_overlapping_mask = self.category_overlapping_mask.to(self.device) # Says if a pixel is seen before
+            category_overlapping_mask = self.category_overlapping_mask.to(self.device)
 
             if self.ensemble_on_valid_mask:
                 # Only include out_vocab cls results on masks with valid pixels
@@ -882,23 +386,18 @@ class FCCLIP(nn.Module):
 
             cls_logits_seen = (
                 (in_vocab_cls_results ** (1 - alpha) * out_vocab_cls_probs**alpha).log()
-                * category_overlapping_mask # If pixel is seen during training we use this classifier
+                * category_overlapping_mask
             )
             cls_logits_unseen = (
                 (in_vocab_cls_results ** (1 - beta) * out_vocab_cls_probs**beta).log()
-                * (1 - category_overlapping_mask) # If pixel not seen during training we use this classifier
+                * (1 - category_overlapping_mask)
             )
+            cls_results = cls_logits_seen + cls_logits_unseen
 
-            cls_results = cls_logits_seen + cls_logits_unseen # Combine predictions
-
-            # This is used to filtering void predictions. Uses the Mask2Former results for is_void_prob
+            # This is used to filtering void predictions.
             is_void_prob = F.softmax(mask_cls_results, dim=-1)[..., -1:]
-            #max_clip_prob, _ = out_vocab_cls_probs.max(-1, keepdim=True)
-            #weight = 0.5
-            #is_void_prob = is_void_prob * (1 - weight * max_clip_prob)
-            cls_prob_no_void = cls_results.softmax(-1)
             mask_cls_probs = torch.cat([
-                cls_prob_no_void * (1.0 - is_void_prob),
+                cls_results.softmax(-1) * (1.0 - is_void_prob),
                 is_void_prob], dim=-1)
             mask_cls_results = torch.log(mask_cls_probs + 1e-8)
 
@@ -910,7 +409,7 @@ class FCCLIP(nn.Module):
                 align_corners=False,
             )
 
-          #  del outputs
+            del outputs
 
             processed_results = []
             for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
@@ -921,64 +420,14 @@ class FCCLIP(nn.Module):
                 processed_results.append({})
 
                 if self.sem_seg_postprocess_before_inference:
-                    mask_pred_result = retry_if_cuda_oom(sem_seg_postprocess)( # Is literally just upsampling
+                    mask_pred_result = retry_if_cuda_oom(sem_seg_postprocess)(
                         mask_pred_result, image_size, height, width
                     )
                     mask_cls_result = mask_cls_result.to(mask_pred_result)
 
-                # Use oracle to fix classes based on gt
-                if 'test_cfg' in input_per_image:
-                    self.test_cfg = input_per_image['test_cfg']
-                else:
-                    self.test_cfg = None
-
-                num_classes = mask_cls_result.shape[1]
-                if self.test_cfg is not None and self.test_cfg.use_oracle:
-                    instances = input_per_image['instances']
-                    gt_ann = input_per_image['gt_ann']
-
-                    if self.test_cfg.use_class_oracle or self.test_cfg.evaluate:
-                        targets = self.prepare_targets([instances], images)
-                        outputs_without_aux = {k: v for k, v in outputs.items() if k != "aux_outputs"} 
-                        matched_indices = self.criterion.matcher(outputs_without_aux, targets)[0]
-
-                    del outputs
-
-                    gt_img = input_per_image['gt_img']
-                    gt_img = rgb2id(gt_img)
-                    gt_img = torch.from_numpy(gt_img).to(self.device)
-
-                    if self.test_cfg.void_histogram_data:
-                        self.void_histogram_data(mask_pred_result, mask_cls_probs[0], cls_prob_no_void[0],
-                                         out_vocab_cls_probs[0], in_vocab_cls_results[0], gt_img, gt_ann, is_void_prob[0])
-
-                    if self.test_cfg.evaluate:
-                        self.evaluate(matched_indices, mask_pred_result, gt_ann, gt_img)
-                    
-                    if self.test_cfg.calculate_confusion_matrix or self.test_cfg.calculate_void_clip_classifications:
-                        self.confusion_matrix_and_void_clip(mask_pred_result, gt_img, gt_ann, num_classes,
-                                              mask_cls_result, self.category_overlapping_mask, out_vocab_cls_probs[0])
-
-                    if self.test_cfg.use_class_oracle:
-                        mask_cls_result = self.fix_mask_classification_with_matching(mask_pred_result, gt_ann,
-                                                                num_classes, matched_indices, gt_img,
-                                                                mask_cls_result, self.category_overlapping_mask, out_vocab_cls_probs[0])
-                    
-                    if self.test_cfg.use_clip_oracle:
-                        mask_cls_result = self.fix_mask_classification_with_clip(mask_pred_result, num_classes,
-                                                                                 mask_cls_result, out_vocab_cls_probs[0], gt_img, gt_ann)
-
-                
-                    
-
-
-                # Skips last part to increase speed of evaluations if we are not saving outputs
-                if self.test_cfg is not None and not self.test_cfg.save_pan_predictions:
-                    return [None]
-
                 # semantic segmentation inference
                 if self.semantic_on:
-                    r = retry_if_cuda_oom(self.semantic_inference)(mask_cls_result, mask_pred_result) # Multiplies class with mask results
+                    r = retry_if_cuda_oom(self.semantic_inference)(mask_cls_result, mask_pred_result)
                     if not self.sem_seg_postprocess_before_inference:
                         r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
                     processed_results[-1]["sem_seg"] = r
@@ -1018,20 +467,17 @@ class FCCLIP(nn.Module):
         return semseg
 
     def panoptic_inference(self, mask_cls, mask_pred):
-        use_oracle = self.test_cfg is not None and self.test_cfg.use_class_oracle
-        scores, labels = F.softmax(mask_cls, dim=-1).max(-1) # For each pixel, get the class with the highest score
-
+        scores, labels = F.softmax(mask_cls, dim=-1).max(-1)
         mask_pred = mask_pred.sigmoid()
-
         num_classes = len(self.test_metadata.stuff_classes)
-        keep = labels.ne(num_classes) & (scores > self.object_mask_threshold) # Thresholding I guess. First part removes background I think
+        keep = labels.ne(num_classes) & (scores > self.object_mask_threshold)
         cur_scores = scores[keep]
         cur_classes = labels[keep]
         cur_masks = mask_pred[keep]
         cur_mask_cls = mask_cls[keep]
-        cur_mask_cls = cur_mask_cls[:, :-1] # Removes the void class
+        cur_mask_cls = cur_mask_cls[:, :-1]
 
-        cur_prob_masks = cur_scores.view(-1, 1, 1) * cur_masks # Each pixel in the mask has the value of the score. Think that masks are 0,1
+        cur_prob_masks = cur_scores.view(-1, 1, 1) * cur_masks
 
         h, w = cur_masks.shape[-2:]
         panoptic_seg = torch.zeros((h, w), dtype=torch.int32, device=cur_masks.device)
@@ -1039,24 +485,22 @@ class FCCLIP(nn.Module):
 
         current_segment_id = 0
 
-        # This section below I think is the coloring of the masks and adding the metadata
-        # Tired to read in detail rn
         if cur_masks.shape[0] == 0:
             # We didn't detect any mask :(
             return panoptic_seg, segments_info
         else:
             # take argmax
-            cur_mask_ids = cur_prob_masks.argmax(0) # Gets the max score for the pixel. Actually the max index. Uses argmax
+            cur_mask_ids = cur_prob_masks.argmax(0)
             stuff_memory_list = {}
             for k in range(cur_classes.shape[0]):
                 pred_class = cur_classes[k].item()
                 isthing = pred_class in self.test_metadata.thing_dataset_id_to_contiguous_id.values()
                 mask_area = (cur_mask_ids == k).sum().item()
                 original_area = (cur_masks[k] >= 0.5).sum().item()
-                mask = (cur_mask_ids == k) & (cur_masks[k] >= 0.5) # Takes pixels of mask but only ones we are sure of 
+                mask = (cur_mask_ids == k) & (cur_masks[k] >= 0.5)
 
                 if mask_area > 0 and original_area > 0 and mask.sum().item() > 0:
-                    if mask_area / original_area < self.overlap_threshold: # The mask is covered by another
+                    if mask_area / original_area < self.overlap_threshold:
                         continue
 
                     # merge stuff regions
