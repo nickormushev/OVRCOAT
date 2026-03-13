@@ -19,7 +19,6 @@ import torch.nn.functional as F
 import math
 from detectron2.utils import comm
 
-from fcclip.modeling.prompt_learner import build_prompt_learner
 import open_clip
 
 from detectron2.modeling import BACKBONE_REGISTRY, Backbone, ShapeSpec
@@ -40,11 +39,6 @@ class CLIP(Backbone):
 
         self.clip_model, _, _ = open_clip.create_model_and_transforms(model_name, pretrained=pretrained)
         self.text_tokenizer = open_clip.get_tokenizer(model_name)
-
-        self.prompt_learner = None
-        if cfg.MODEL.BACKBONE.PROMPT.LEARNABLE:
-            self.prompt_learner = build_prompt_learner(cfg.MODEL.BACKBONE)
-            self.prompt_learner.init_buffer(self.clip_model, self.text_tokenizer)
 
         model_name = model_name.lower()
         if 'convnext_' in model_name:
@@ -193,7 +187,7 @@ class CLIP(Backbone):
     def visual_prediction_forward_resnet(self, x, masks):
         batch, channel, height, width = x.shape
         if masks.shape[-2] != height or masks.shape[-1] != width:
-            masks = F.inteprolate(masks, size=(height, width), mode='bilinear', align_corners=False)
+            masks = F.interpolate(masks, size=(height, width), mode='bilinear', align_corners=False)
         num_masks = masks.shape[1]
 
         positional_embedding = self.clip_model.visual.attnpool.positional_embedding.to(x.dtype)
@@ -241,23 +235,19 @@ class CLIP(Backbone):
         return x
 
     def get_text_classifier(self, text_list, device):
-        if self.prompt_learner is not None:
-            embeddings, indices = self.prompt_learner(text_list, self.clip_model, self.text_tokenizer)
+        was_training = self.training
+        self.eval()
+        with torch.no_grad():
+            # reference for templates: https://github.com/mlfoundations/open_clip/blob/91f6cce16b7bee90b3b5d38ca305b5b3b67cc200/src/training/imagenet_zeroshot_data.py
+            text_tokens = self.tokenize_text(text_list)
+            text_tokens = text_tokens.to(device)
+            # we return un-normalized text feature.
+            indices = text_tokens.argmax(dim=-1)
+            embeddings = self.clip_model.token_embedding(text_tokens)
             text_features = self.encode_text(embeddings, indices, normalize=False)
-        else:
-            was_training = self.training
-            self.eval()
-            with torch.no_grad():
-                # reference for templates: https://github.com/mlfoundations/open_clip/blob/91f6cce16b7bee90b3b5d38ca305b5b3b67cc200/src/training/imagenet_zeroshot_data.py
-                text_tokens = self.tokenize_text(text_list)
-                text_tokens = text_tokens.to(device)
-                # we return un-normalized text feature.
-                indices = text_tokens.argmax(dim=-1)
-                embeddings = self.clip_model.token_embedding(text_tokens)
-                text_features = self.encode_text(embeddings, indices, normalize=False)
 
-            if was_training:
-                self.train()
+        if was_training:
+            self.train()
 
         return text_features
 
