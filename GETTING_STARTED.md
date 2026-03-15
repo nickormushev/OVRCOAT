@@ -1,6 +1,6 @@
-## Getting Started with FC-CLIP
+## Getting Started with OVRCOAT
 
-This document provides a brief intro of the usage of FC-CLIP.
+This document provides a brief intro of the usage of OVRCOAT.
 
 Please see [Getting Started with Detectron2](https://github.com/facebookresearch/detectron2/blob/master/GETTING_STARTED.md) for full usage.
 
@@ -15,7 +15,7 @@ python demo.py \
   [--other-options]
   --opts MODEL.WEIGHTS /path/to/checkpoint_file
 ```
-The configs are made for training, therefore we need to specify `MODEL.WEIGHTS` to a model from model zoo for evaluation.
+The configs are made for training, therefore we need to specify `MODEL.WEIGHTS` to the ovrcoat.pth model for evaluation. Link in [README](README.md)
 This command will run the inference and show visualizations in an OpenCV window.
 
 For details of the command line arguments, see `demo.py -h` or look at its source code
@@ -28,30 +28,31 @@ to understand its behavior. Some common arguments are:
 
 ### Training & Evaluation in Command Line
 
-We provide a script `train_net.py`, that is made to train all the configs provided in FC-CLIP.
+We provide a script `train_net.py`, that is made to train all the configs provided in OVRCOAT.
 
 To train a model with "train_net.py", first
 setup the corresponding datasets following
 [datasets/README.md](./datasets/README.md),
 then run:
 ```
-python train_net.py --num-gpus 8 \
-  --config-file configs/coco/panoptic-segmentation/fcclip/fcclip_convnext_large_eval_ade20k.yaml
+python3 ./train_net.py \
+    --num-gpus 3 \
+    --config-file configs/coco/panoptic-segmentation/fcclip/ovrcoat_convnext_large_eval_ade20k.yaml \
 ```
 
-The configs are made for 8-GPU training.
+The configs are made for 3-GPU training.
 Since we use ADAMW optimizer, it is not clear how to scale learning rate with batch size.
 To train on 1 GPU, you need to figure out learning rate and batch size by yourself:
 ```
 python train_net.py \
-  --config-file configs/coco/panoptic-segmentation/fcclip/fcclip_convnext_large_eval_ade20k.yaml \
+  --config-file configs/coco/panoptic-segmentation/fcclip/ovrcoat_convnext_large_eval_ade20k.yaml \
   --num-gpus 1 SOLVER.IMS_PER_BATCH SET_TO_SOME_REASONABLE_VALUE SOLVER.BASE_LR SET_TO_SOME_REASONABLE_VALUE
 ```
 
 To evaluate a model's performance, use
 ```
-python train_net.py \
-  --config-file configs/coco/panoptic-segmentation/fcclip/fcclip_convnext_large_eval_ade20k.yaml \
-  --eval-only MODEL.WEIGHTS /path/to/checkpoint_file
+python3 ./train_net.py \
+    --config-file configs/coco/panoptic-segmentation/fcclip/ovrcoat_convnext_large_eval_ade20k.yaml \
+    --eval-only MODEL.WEIGHTS ./<path_to_stored_weights>/ovrcoat.pth
 ```
 For more options, see `python train_net.py -h`.
