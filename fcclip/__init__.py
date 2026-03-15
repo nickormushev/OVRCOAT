@@ -17,7 +17,7 @@ from . import data  # register all new datasets
 from . import modeling
 
 # config
-from .config import add_maskformer2_config, add_fcclip_config
+from .config import add_maskformer2_config, add_fcclip_config, add_ovrcoat_config
 
 # dataset loading
 from .data.dataset_mappers.coco_instance_new_baseline_dataset_mapper import COCOInstanceNewBaselineDatasetMapper
@@ -34,7 +34,7 @@ from .data.dataset_mappers.mask_former_semantic_dataset_mapper import (
 
 # models
 from .fcclip import FCCLIP
-from .backbone_training.reclip import RECLIP
+from .backbone_training.reclip import OVRCOAT
 from .test_time_augmentation import SemanticSegmentorWithTTA
 
 # evaluation

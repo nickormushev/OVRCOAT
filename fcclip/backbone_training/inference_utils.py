@@ -1,34 +1,15 @@
 import torch
 from detectron2.structures import Boxes, Instances
 
-def semantic_inference(mask_cls, mask_pred, test_perfect_masks, test_with_void, test_with_fc_clip, test_metadata, object_mask_threshold, sim):
-    # Try to discard masks
-    # Pixels no label at all. Any mask that is void multiply the probabilities by 10^-3
-    scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
-
-
-    num_classes = len(test_metadata.stuff_classes)
-    keep = (labels != num_classes) & (scores > object_mask_threshold)
-    
-    # Create a multiplier: 1 for good masks, 1e-1 for discarded masks
-    discard_multiplier = keep.float() + (~keep).float() * 0.1  
-    #mask_cls = mask_cls[keep] * discard_multiplier
-
-    if not test_perfect_masks:
-        if test_with_void or test_with_fc_clip:
-            mask_cls = mask_cls[..., :-1]
-            scores, labels = mask_cls.max(-1)
-            mask_cls = mask_cls * sim[labels]
-        mask_pred = mask_pred.sigmoid()
-
+def semantic_inference(mask_cls, mask_pred):
+    mask_cls = mask_cls[..., :-1]
+    mask_pred = mask_pred.sigmoid()
     semseg = torch.einsum("qc,qhw->chw", mask_cls, mask_pred)
     return semseg
 
-def panoptic_inference(mask_cls, mask_pred, test_perfect_masks, test_metadata, overlap_threshold, object_mask_threshold):
+def panoptic_inference(mask_cls, mask_pred, test_metadata, overlap_threshold, object_mask_threshold):
     scores, labels = mask_cls.max(-1) # For each pixel, get the class with the highest score
-
-    if not test_perfect_masks:
-        mask_pred = mask_pred.sigmoid()
+    mask_pred = mask_pred.sigmoid()
 
     num_classes = len(test_metadata.stuff_classes)
     keep = labels.ne(num_classes) & (scores > object_mask_threshold) # Thresholding I guess. First part removes background I think
@@ -83,16 +64,13 @@ def panoptic_inference(mask_cls, mask_pred, test_perfect_masks, test_metadata, o
 
         return panoptic_seg, segments_info
 
-def instance_inference(mask_cls, mask_pred, test_topk_per_image,
-    test_with_void, test_with_fc_clip, panoptic_on, test_metadata, device):
+def instance_inference(mask_cls, mask_pred, test_topk_per_image, panoptic_on, test_metadata, device):
     # mask_pred is already processed to have the same shape as original input
     image_size = mask_pred.shape[-2:]
 
     # [Q, K]
     scores = mask_cls.to(device)
-
-    if test_with_void or test_with_fc_clip:
-        scores = scores[:, :-1]
+    scores = scores[:, :-1]
 
     # if this is panoptic segmentation
     if panoptic_on:

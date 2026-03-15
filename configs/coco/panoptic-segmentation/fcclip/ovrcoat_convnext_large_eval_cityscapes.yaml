@@ -10,4 +10,5 @@ INPUT:
   MAX_SIZE_TEST: 2560
 
 DATASETS:
+  #TEST: ("openvocab_mapillary_vistas_panoptic_val",)
   TEST: ("openvocab_cityscapes_fine_panoptic_val",)

@@ -119,6 +119,15 @@ def add_maskformer2_config(cfg):
     cfg.MODEL.MASK_FORMER.IMPORTANCE_SAMPLE_RATIO = 0.75
 
 
+def add_ovrcoat_config(cfg):
+    # OVRCOAT model config
+    cfg.MODEL.OVRCOAT = CN()
+    cfg.MODEL.OVRCOAT.CE_WEIGHT = 2.0
+    cfg.MODEL.OVRCOAT.DIST_WEIGHT = 0.02
+    cfg.MODEL.OVRCOAT.RC_WEIGHTS = 0.0
+    cfg.MODEL.OVRCOAT.SEM_SEG_WEIGHTS = "./fcclip_cocopan.pth"
+    cfg.MODEL.OVRCOAT.CLIP_TRUST_WEIGHT = 0.5
+
 def add_fcclip_config(cfg):
     # FC-CLIP model config
     cfg.MODEL.FC_CLIP = CN()
@@ -128,10 +137,3 @@ def add_fcclip_config(cfg):
     cfg.MODEL.FC_CLIP.GEOMETRIC_ENSEMBLE_ALPHA = 0.4
     cfg.MODEL.FC_CLIP.GEOMETRIC_ENSEMBLE_BETA = 0.8
     cfg.MODEL.FC_CLIP.ENSEMBLE_ON_VALID_MASK = False
-    cfg.MODEL.FC_CLIP.DIST_WEIGHT = 3.0
-    cfg.MODEL.FC_CLIP.CE_WEIGHT = 2.0
-    cfg.MODEL.FC_CLIP.LOSS = "l2"
-    cfg.MODEL.FC_CLIP.USE_POOLING_WEIGHTS = False
-    cfg.MODEL.FC_CLIP.DIST_WARMUP_ITERS = 0
-    cfg.MODEL.FC_CLIP.SEM_SEG_WEIGHTS = "./fcclip_cocopan.pth"
-    
