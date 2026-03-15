@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 This file may have been modified by Bytedance Ltd. and/or its affiliates (“Bytedance's Modifications”).
-All Bytedance's Modifications are Copyright (year) Bytedance Ltd. and/or its affiliates. 
+All Bytedance's Modifications are Copyright (year) Bytedance Ltd. and/or its affiliates.
 
 Reference: https://github.com/facebookresearch/Mask2Former/blob/main/mask2former/config.py
 """
@@ -96,7 +96,9 @@ def add_maskformer2_config(cfg):
 
     # NOTE: maskformer2 extra configs
     # transformer module
-    cfg.MODEL.MASK_FORMER.TRANSFORMER_DECODER_NAME = "MultiScaleMaskedTransformerDecoder"
+    cfg.MODEL.MASK_FORMER.TRANSFORMER_DECODER_NAME = (
+        "MultiScaleMaskedTransformerDecoder"
+    )
 
     # LSJ aug
     cfg.INPUT.IMAGE_SIZE = 1024
@@ -104,7 +106,11 @@ def add_maskformer2_config(cfg):
     cfg.INPUT.MAX_SCALE = 2.0
 
     # MSDeformAttn encoder configs
-    cfg.MODEL.SEM_SEG_HEAD.DEFORMABLE_TRANSFORMER_ENCODER_IN_FEATURES = ["res3", "res4", "res5"]
+    cfg.MODEL.SEM_SEG_HEAD.DEFORMABLE_TRANSFORMER_ENCODER_IN_FEATURES = [
+        "res3",
+        "res4",
+        "res5",
+    ]
     cfg.MODEL.SEM_SEG_HEAD.DEFORMABLE_TRANSFORMER_ENCODER_N_POINTS = 4
     cfg.MODEL.SEM_SEG_HEAD.DEFORMABLE_TRANSFORMER_ENCODER_N_HEADS = 8
 
@@ -120,13 +126,19 @@ def add_maskformer2_config(cfg):
 
 
 def add_ovrcoat_config(cfg):
+    cfg.TRAIN = CN()
+    cfg.TRAIN.LOSSES = ["oov_ce"]
+    cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS = True
+    cfg.TRAIN.DETACH_SEG_HEAD = False
     # OVRCOAT model config
     cfg.MODEL.OVRCOAT = CN()
     cfg.MODEL.OVRCOAT.CE_WEIGHT = 2.0
     cfg.MODEL.OVRCOAT.DIST_WEIGHT = 0.02
     cfg.MODEL.OVRCOAT.RC_WEIGHTS = 0.0
     cfg.MODEL.OVRCOAT.SEM_SEG_WEIGHTS = "./fcclip_cocopan.pth"
-    cfg.MODEL.OVRCOAT.CLIP_TRUST_WEIGHT = 0.5
+    cfg.MODEL.OVRCOAT.CLIP_TRUST_WEIGHT = 0.0
+    cfg.MODEL.BACKBONE.FREEZE = True
+
 
 def add_fcclip_config(cfg):
     # FC-CLIP model config

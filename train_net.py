@@ -335,20 +335,7 @@ def setup(args):
     Create configs and perform basic setups.
     """
     cfg = get_cfg()
-    cfg.MODEL.BACKBONE.FREEZE = True
-    cfg.MODEL.BACKBONE.PROMPT = CN()
-    cfg.MODEL.BACKBONE.PROMPT.LEARNABLE = False
-    cfg.MODEL.BACKBONE.PROMPT.DIM = 512
-    cfg.MODEL.BACKBONE.PROMPT.SHAPE = (16, 0)
-    cfg.MODEL.BACKBONE.PROMPT.CHECKPOINT = ""
-    cfg.MODEL.CLIP_TRUST_WEIGHT = 0.0
 
-    cfg.TRAIN = CN()
-    cfg.TRAIN.LOSSES = ["oov_ce"]
-    cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS = True
-    cfg.TRAIN.DETACH_SEG_HEAD = False
-
-    # for poly lr schedule
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
     add_fcclip_config(cfg)

@@ -38,3 +38,12 @@ ABLATION*
 dl_project*
 Mutual*
 visuals*
+RC_LOSS*
+NO_DIST_*
+NO_FREEZE_*
+DIST*
+RECLIP*
+interesting*
+out/*
+Out*
+maft_configs/*

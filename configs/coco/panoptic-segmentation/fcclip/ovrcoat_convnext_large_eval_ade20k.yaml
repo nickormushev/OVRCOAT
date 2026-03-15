@@ -1,5 +1,9 @@
 _BASE_: ./fcclip_convnext_large_eval_ade20k.yaml
 MODEL:
+  MASK_FORMER:
+    TEST:
+      PANOPTIC_ON: False
+      INSTANCE_ON: False
   META_ARCHITECTURE: "OVRCOAT"
   # backbone part.
   BACKBONE:
@@ -15,7 +19,7 @@ MODEL:
     CE_WEIGHT: 2.0
     DIST_WEIGHT: 0.02
     RC_WEIGHTS: 0.0
-    CLIP_TRUST_WEIGHT: 0.5
+    CLIP_TRUST_WEIGHT: 0.0
     SEM_SEG_WEIGHTS: "/home/nikolay/fcclip_cocopan.pth"
 SOLVER:
   IMS_PER_BATCH: 16
@@ -53,8 +57,9 @@ DATALOADER:
 DATASETS:
   #TEST: ("openvocab_coco_2017_val_panoptic_with_sem_seg",)
   #TEST: ("openvocab_ade20k_full_sem_seg_val",)
-  TEST: ("openvocab_ade20k_panoptic_val",)
+  #TEST: ("openvocab_ade20k_panoptic_val",)
   #TEST: ("openvocab_pascal_ctx459_sem_seg_val",)
   #TEST: ("openvocab_pascal_ctx59_sem_seg_val",)
   #TEST: ("openvocab_pascal20_sem_seg_val",)
+  TEST: ("openvocab_pascal21_sem_seg_val",)
   #TEST: ("openvocab_cityscapes_fine_panoptic_val",)
