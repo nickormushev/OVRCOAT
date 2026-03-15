@@ -1,8 +1,13 @@
 """
-This file may have been modified by Bytedance Ltd. and/or its affiliates (“Bytedance's Modifications”).
-All Bytedance's Modifications are Copyright (year) Bytedance Ltd. and/or its affiliates.
+Adapted from:
+https://github.com/facebookresearch/Mask2Former/blob/main/mask2former/maskformer_model.py
+and
+https://github.com/bytedance/fc-clip
 
-Reference: https://github.com/facebookresearch/Mask2Former/blob/main/mask2former/maskformer_model.py
+Original code Copyright (c) Meta Platforms, Inc. and affiliates.
+Modifications Copyright (c) Bytedance Ltd. and/or its affiliates.
+
+This file contains further modifications for this project.
 """
 
 from typing import Tuple
@@ -24,20 +29,20 @@ from detectron2.utils.memory import retry_if_cuda_oom
 from torch import nn
 from torch.nn import functional as F
 
+from fcclip.backbone_training.inference_utils import (
+    instance_inference,
+    panoptic_inference,
+    semantic_inference,
+)
+from fcclip.backbone_training.losses import calculate_dist_loss
+from fcclip.backbone_training.representation_compensation import (
+    Representation_Compensation,
+)
 from fcclip.modeling.criterion import SetCriterion
 from fcclip.modeling.matcher import HungarianMatcher
 from fcclip.modeling.transformer_decoder.fcclip_transformer_decoder import (
     MaskPooling,
     get_classification_logits,
-)
-from fcclip.ovrcoat.inference_utils import (
-    instance_inference,
-    panoptic_inference,
-    semantic_inference,
-)
-from fcclip.ovrcoat.losses import calculate_dist_loss
-from fcclip.ovrcoat.representation_compensation import (
-    Representation_Compensation,
 )
 
 VILD_PROMPT = [
