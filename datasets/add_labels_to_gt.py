@@ -7,7 +7,7 @@ print(new_root_dir)
 os.chdir(new_root_dir)
 sys.path.append(new_root_dir)
 
-from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
+from ovrcoat.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
 
 pan_val = json.load(open('./datasets/ADEChallengeData2016/ade20k_panoptic_val.json'))
 

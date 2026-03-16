@@ -28,7 +28,7 @@ new_root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
 os.chdir(new_root_dir)
 sys.path.append(new_root_dir)
 
-from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
+from ovrcoat.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
 import PIL.Image as Image
 
 # If set to False we ignore missmatched classes for true positive calculations for PQ

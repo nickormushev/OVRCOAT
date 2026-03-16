@@ -29,18 +29,18 @@ from detectron2.utils.memory import retry_if_cuda_oom
 from torch import nn
 from torch.nn import functional as F
 
-from fcclip.backbone_training.inference_utils import (
+from ovrcoat.backbone_training.inference_utils import (
     instance_inference,
     panoptic_inference,
     semantic_inference,
 )
-from fcclip.backbone_training.losses import calculate_dist_loss
-from fcclip.backbone_training.representation_compensation import (
+from ovrcoat.backbone_training.losses import calculate_dist_loss
+from ovrcoat.backbone_training.representation_compensation import (
     Representation_Compensation,
 )
-from fcclip.modeling.criterion import SetCriterion
-from fcclip.modeling.matcher import HungarianMatcher
-from fcclip.modeling.transformer_decoder.fcclip_transformer_decoder import (
+from ovrcoat.modeling.criterion import SetCriterion
+from ovrcoat.modeling.matcher import HungarianMatcher
+from ovrcoat.modeling.transformer_decoder.fcclip_transformer_decoder import (
     MaskPooling,
     get_classification_logits,
 )

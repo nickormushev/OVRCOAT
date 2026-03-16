@@ -22,7 +22,7 @@ OUTPUT_FILE = "pq_difference_side_by_side.pdf"
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from fcclip.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
+from ovrcoat.data.datasets.register_ade20k_panoptic import ADE20K_150_CATEGORIES
 
 # ------------------------------
 # Load PQ JSONs

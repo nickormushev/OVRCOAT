@@ -29,7 +29,7 @@ from detectron2.projects.deeplab import add_deeplab_config
 from detectron2.utils.logger import setup_logger
 from predictor import VisualizationDemo
 
-from fcclip import add_fcclip_config, add_maskformer2_config, add_ovrcoat_config
+from ovrcoat import add_fcclip_config, add_maskformer2_config, add_ovrcoat_config
 
 # constants
 WINDOW_NAME = "fc-clip demo"
