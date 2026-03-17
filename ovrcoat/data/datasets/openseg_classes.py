@@ -2368,7 +2368,7 @@ def get_coco_categories_with_prompt_eng():
     pwd = os.getcwd()
     print(pwd)
     COCO_CATEGORIES_ = copy.deepcopy(COCO_CATEGORIES)
-    coco_id_names = open('./fcclip/data/datasets/coco_panoptic_with_prompt_eng.txt').read().splitlines()
+    coco_id_names = open('./ovrcoat/data/datasets/coco_panoptic_with_prompt_eng.txt').read().splitlines()
     coco_idx = 0
     for line in coco_id_names:
         idx, name = line.split(':')
@@ -2384,7 +2384,7 @@ def get_coco_categories_with_prompt_eng():
 
 def get_coco_stuff_categories_with_prompt_eng():
     COCO_STUFF_CATEGORIES_ = copy.deepcopy(COCO_STUFF_CATEGORIES)
-    coco_id_names = open('./fcclip/data/datasets/coco_stuff_with_prompt_eng.txt').read().splitlines()
+    coco_id_names = open('./ovrcoat/data/datasets/coco_stuff_with_prompt_eng.txt').read().splitlines()
     coco_idx = 0
     for line in coco_id_names:
         idx, name = line.split(':')
@@ -2400,7 +2400,7 @@ def get_coco_stuff_categories_with_prompt_eng():
 
 def get_ade20k_categories_with_prompt_eng():
     ADE20K_150_CATEGORIES_ = copy.deepcopy(ADE20K_150_CATEGORIES)
-    ade20k_id_names = open('./fcclip/data/datasets/ade20k_150_with_prompt_eng.txt').read().splitlines()
+    ade20k_id_names = open('./ovrcoat/data/datasets/ade20k_150_with_prompt_eng.txt').read().splitlines()
     ade_idx = 0
     for line in ade20k_id_names:
         idx, name = line.split(':')
@@ -2416,7 +2416,7 @@ def get_ade20k_categories_with_prompt_eng():
 
 def get_cityscapes_categories_with_prompt_eng():
     CITYSCAPES_CATEGORIES_ = copy.deepcopy(CITYSCAPES_CATEGORIES)
-    cityscapes_id_names = open('./fcclip/data/datasets/cityscapes_with_prompt_eng.txt').read().splitlines()
+    cityscapes_id_names = open('./ovrcoat/data/datasets/cityscapes_with_prompt_eng.txt').read().splitlines()
     cityscapes_idx = 0
     for line in cityscapes_id_names:
         idx, name = line.split(':')
@@ -2431,7 +2431,7 @@ def get_cityscapes_categories_with_prompt_eng():
 
 def get_ade20k_847_categories_with_prompt_eng():
     ADE20K_847_CATEGORIES_ = copy.deepcopy(ADE20K_847_CATEGORIES)
-    ade20k_847_id_names = open('./fcclip/data/datasets/ade20k_847_with_prompt_eng.txt').read().splitlines()
+    ade20k_847_id_names = open('./ovrcoat/data/datasets/ade20k_847_with_prompt_eng.txt').read().splitlines()
     ade_idx = 0
     for line in ade20k_847_id_names:
         idx, name = line.split(':')
@@ -2446,7 +2446,7 @@ def get_ade20k_847_categories_with_prompt_eng():
 
 def get_pascal_21_categories_with_prompt_eng():
     PASCAL_VOC_21_CATEGORIES_ = copy.deepcopy(PASCAL_VOC_21_CATEGORIES)
-    pascal_21_id_names = open('./fcclip/data/datasets/pascal_voc_21_with_prompt_eng.txt').read().splitlines()
+    pascal_21_id_names = open('./ovrcoat/data/datasets/pascal_voc_21_with_prompt_eng.txt').read().splitlines()
     pas_idx = 0
     for line in pascal_21_id_names:
         idx, name = line.split(':')
@@ -2457,7 +2457,7 @@ def get_pascal_21_categories_with_prompt_eng():
 
 def get_pascal_ctx_459_categories_with_prompt_eng():
     PASCAL_CTX_459_CATEGORIES_ = copy.deepcopy(PASCAL_CTX_459_CATEGORIES)
-    pascal_ctx_459_id_names = open('./fcclip/data/datasets/pascal_ctx_459_with_prompt_eng.txt').read().splitlines()
+    pascal_ctx_459_id_names = open('./ovrcoat/data/datasets/pascal_ctx_459_with_prompt_eng.txt').read().splitlines()
     pas_idx = 0
     for line in pascal_ctx_459_id_names:
         idx, name = line.split(':')
@@ -2470,7 +2470,7 @@ def get_pascal_ctx_459_categories_with_prompt_eng():
 
 def get_pascal_ctx_59_categories_with_prompt_eng():
     PASCAL_CTX_59_CATEGORIES_ = copy.deepcopy(PASCAL_CTX_59_CATEGORIES)
-    pascal_ctx_59_id_names = open('./fcclip/data/datasets/pascal_ctx_59_with_prompt_eng.txt').read().splitlines()
+    pascal_ctx_59_id_names = open('./ovrcoat/data/datasets/pascal_ctx_59_with_prompt_eng.txt').read().splitlines()
     pas_idx = 0
     for line in pascal_ctx_59_id_names:
         idx, name = line.split(':')
@@ -2483,7 +2483,7 @@ def get_pascal_ctx_59_categories_with_prompt_eng():
 
 def get_mapillary_vistas_categories_with_prompt_eng():
     MAPILLARY_VISTAS_SEM_SEG_CATEGORIES_ = copy.deepcopy(MAPILLARY_VISTAS_SEM_SEG_CATEGORIES)
-    mapillary_vistas_id_names = open('./fcclip/data/datasets/mapillary_vistas_with_prompt_eng.txt').read().splitlines()
+    mapillary_vistas_id_names = open('./ovrcoat/data/datasets/mapillary_vistas_with_prompt_eng.txt').read().splitlines()
     mapillary_idx = 0
     for line in mapillary_vistas_id_names:
         idx, name = line.split(':')
