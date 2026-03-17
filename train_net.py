@@ -1,44 +1,29 @@
-import torch.distributed as dist
-import wandb
-import yaml
-import re
-from detectron2.config.config import CfgNode as CN
-
-def is_main_process():
-    return not dist.is_initialized() or dist.get_rank() == 0
-
 """
-This file may have been modified by Bytedance Ltd. and/or its affiliates (“Bytedance's Modifications”).
-All Bytedance's Modifications are Copyright (year) Bytedance Ltd. and/or its affiliates. 
+Adapted from:
+https://github.com/facebookresearch/Mask2Former/blob/main/train_net.py
+and
+https://github.com/bytedance/fc-clip
 
-Reference: https://github.com/facebookresearch/Mask2Former/blob/main/train_net.py
+Original code Copyright (c) Meta Platforms, Inc. and affiliates.
+Modifications Copyright (c) Bytedance Ltd. and/or its affiliates.
 
-FCCLIP Training Script.
-
-This script is a simplified version of the training script in detectron2/tools.
+This file contains further modifications for this project.
 """
-try:
-    # ignore ShapelyDeprecationWarning from fvcore
-    from shapely.errors import ShapelyDeprecationWarning
-    import warnings
-    warnings.filterwarnings('ignore', category=ShapelyDeprecationWarning)
-except:
-    pass
 
 import copy
 import itertools
 import logging
 import os
-
 from collections import OrderedDict
 from typing import Any, Dict, List, Set
 
-import torch
-
 import detectron2.utils.comm as comm
+import torch
+import torch.distributed as dist
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
-from detectron2.data import MetadataCatalog, build_detection_train_loader, build_detection_test_loader
+from detectron2.config.config import CfgNode as CN
+from detectron2.data import MetadataCatalog, build_detection_train_loader
 from detectron2.engine import (
     DefaultTrainer,
     default_argument_parser,
@@ -58,22 +43,39 @@ from detectron2.projects.deeplab import add_deeplab_config, build_lr_scheduler
 from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.utils.logger import setup_logger
 
-from fcclip import (
+from ovrcoat import (
     COCOInstanceNewBaselineDatasetMapper,
-    COCOPanopticNewBaselineDatasetMapper,
     COCOPanopticEvaluator,
+    COCOPanopticNewBaselineDatasetMapper,
     InstanceSegEvaluator,
     MaskFormerInstanceDatasetMapper,
     MaskFormerPanopticDatasetMapper,
     MaskFormerSemanticDatasetMapper,
     SemanticSegmentorWithTTA,
+    add_fcclip_config,
     add_maskformer2_config,
-    add_fcclip_config
+    add_ovrcoat_config,
 )
+
+
+def is_main_process():
+    return not dist.is_initialized() or dist.get_rank() == 0
+
+
+try:
+    # ignore ShapelyDeprecationWarning from fvcore
+    import warnings
+
+    from shapely.errors import ShapelyDeprecationWarning
+
+    warnings.filterwarnings("ignore", category=ShapelyDeprecationWarning)
+except:
+    pass
 
 
 def add_sufix_to_keys(original_dict, suffix):
     return {f"{key}{suffix}": value for key, value in original_dict.items()}
+
 
 class Trainer(DefaultTrainer):
     """
@@ -113,17 +115,41 @@ class Trainer(DefaultTrainer):
             "mapillary_vistas_panoptic_seg",
         ]:
             if cfg.MODEL.MASK_FORMER.TEST.PANOPTIC_ON:
-                evaluator_list.append(COCOPanopticEvaluator(dataset_name, output_folder))
+                evaluator_list.append(
+                    COCOPanopticEvaluator(dataset_name, output_folder)
+                )
         # COCO
-        if evaluator_type == "coco_panoptic_seg" and cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON:
+        if (
+            evaluator_type == "coco_panoptic_seg"
+            and cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON
+        ):
             evaluator_list.append(COCOEvaluator(dataset_name, output_dir=output_folder))
-        if evaluator_type == "coco_panoptic_seg" and cfg.MODEL.MASK_FORMER.TEST.SEMANTIC_ON:
-            evaluator_list.append(SemSegEvaluator(dataset_name, distributed=True, output_dir=output_folder))
+        if (
+            evaluator_type == "coco_panoptic_seg"
+            and cfg.MODEL.MASK_FORMER.TEST.SEMANTIC_ON
+        ):
+            evaluator_list.append(
+                SemSegEvaluator(
+                    dataset_name, distributed=True, output_dir=output_folder
+                )
+            )
         # Mapillary Vistas
-        if evaluator_type == "mapillary_vistas_panoptic_seg" and cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON:
-            evaluator_list.append(InstanceSegEvaluator(dataset_name, output_dir=output_folder))
-        if evaluator_type == "mapillary_vistas_panoptic_seg" and cfg.MODEL.MASK_FORMER.TEST.SEMANTIC_ON:
-            evaluator_list.append(SemSegEvaluator(dataset_name, distributed=True, output_dir=output_folder))
+        if (
+            evaluator_type == "mapillary_vistas_panoptic_seg"
+            and cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON
+        ):
+            evaluator_list.append(
+                InstanceSegEvaluator(dataset_name, output_dir=output_folder)
+            )
+        if (
+            evaluator_type == "mapillary_vistas_panoptic_seg"
+            and cfg.MODEL.MASK_FORMER.TEST.SEMANTIC_ON
+        ):
+            evaluator_list.append(
+                SemSegEvaluator(
+                    dataset_name, distributed=True, output_dir=output_folder
+                )
+            )
         # Cityscapes
         if evaluator_type == "cityscapes_instance":
             assert (
@@ -147,8 +173,13 @@ class Trainer(DefaultTrainer):
                 ), "CityscapesEvaluator currently do not work with multiple machines."
                 evaluator_list.append(CityscapesInstanceEvaluator(dataset_name))
         # ADE20K
-        if evaluator_type == "ade20k_panoptic_seg" and cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON:
-            evaluator_list.append(InstanceSegEvaluator(dataset_name, output_dir=output_folder))
+        if (
+            evaluator_type == "ade20k_panoptic_seg"
+            and cfg.MODEL.MASK_FORMER.TEST.INSTANCE_ON
+        ):
+            evaluator_list.append(
+                InstanceSegEvaluator(dataset_name, output_dir=output_folder)
+            )
         # LVIS
         if evaluator_type == "lvis":
             return LVISEvaluator(dataset_name, output_dir=output_folder)
@@ -160,23 +191,8 @@ class Trainer(DefaultTrainer):
             )
         elif len(evaluator_list) == 1:
             return evaluator_list[0]
+
         return DatasetEvaluators(evaluator_list)
-
-    #@classmethod
-    #def build_test_loader(cls, cfg, dataset_name):
-    #    """
-    #    Returns:
-    #        iterable
-
-    #    It now calls :func:`detectron2.data.build_detection_test_loader`.
-    #    Overwrite it if you'd like a different data loader.
-    #    """
-
-    #    mapper = None
-    #    #if dataset_name == 'openvocab_ade20k_panoptic_val':
-    #    mapper = MaskFormerPanopticDatasetMapper(cfg, True, random_flip=False)
-
-    #    return build_detection_test_loader(cfg, dataset_name, mapper=mapper)
 
     @classmethod
     def build_train_loader(cls, cfg):
@@ -248,7 +264,9 @@ class Trainer(DefaultTrainer):
 
                 hyperparams = copy.copy(defaults)
                 if "backbone" in module_name:
-                    hyperparams["lr"] = hyperparams["lr"] * cfg.SOLVER.BACKBONE_MULTIPLIER
+                    hyperparams["lr"] = (
+                        hyperparams["lr"] * cfg.SOLVER.BACKBONE_MULTIPLIER
+                    )
                 if (
                     "relative_position_bias_table" in module_param_name
                     or "absolute_pos_embed" in module_param_name
@@ -272,7 +290,9 @@ class Trainer(DefaultTrainer):
 
             class FullModelGradientClippingOptimizer(optim):
                 def step(self, closure=None):
-                    all_params = itertools.chain(*[x["params"] for x in self.param_groups])
+                    all_params = itertools.chain(
+                        *[x["params"] for x in self.param_groups]
+                    )
                     torch.nn.utils.clip_grad_norm_(all_params, clip_norm_val)
                     super().step(closure=closure)
 
@@ -315,31 +335,11 @@ def setup(args):
     Create configs and perform basic setups.
     """
     cfg = get_cfg()
-    cfg.MODEL.BACKBONE.FREEZE = True
-    cfg.MODEL.RECLASSIFY_VOID = False
-    cfg.MODEL.BACKBONE.PROMPT = CN()
-    cfg.MODEL.BACKBONE.PROMPT.LEARNABLE = False
-    cfg.MODEL.BACKBONE.PROMPT.DIM = 512
-    cfg.MODEL.BACKBONE.PROMPT.SHAPE = (16, 0)
-    cfg.MODEL.BACKBONE.PROMPT.CHECKPOINT = ""
 
-    cfg.TEST.PERFECT_MASKS = False
-    cfg.TEST.WITH_VOID = False
-    cfg.TEST.WITH_FC_CLIP = False
-
-    cfg.TRAIN = CN()
-    cfg.TRAIN.SEG_HEAD = False
-    cfg.TRAIN.WITH_FC_CLIP_MASKS = False
-    cfg.TRAIN.LOSSES = ["oov_ce"]
-    cfg.TRAIN.USE_TUNED_FEATURES_FOR_SEG_HEAD = False
-    cfg.TRAIN.USE_PRETRAINED_SEG_HEAD_WEIGHTS = True
-    cfg.TRAIN.DETACH_SEG_HEAD = False
-
-
-    # for poly lr schedule
     add_deeplab_config(cfg)
     add_maskformer2_config(cfg)
     add_fcclip_config(cfg)
+    add_ovrcoat_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()
@@ -363,100 +363,50 @@ def run_eval(cfg, model, model_path, args):
         res.update(Trainer.test_with_TTA(cfg, model))
     if comm.is_main_process():
         verify_results(cfg, res)
-    
+
     return res
+
 
 def main(args):
     cfg = setup(args)
-
-    dump = cfg.dump()
-    cfg_dict  = yaml.safe_load(dump)
-
-    #if is_main_process():
-    wandb.init(
-        name=args.wandb_name,
-        project="segmentation-clip-detailed-no-norm",
-        config=cfg_dict
-    )
 
     if args.eval_only:
         model = Trainer.build_model(cfg)
 
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        frozen_params = sum(p.numel() for p in model.parameters() if not p.requires_grad)
+        frozen_params = sum(
+            p.numel() for p in model.parameters() if not p.requires_grad
+        )
         frozen_params_exclude_text = 0
         for n, p in model.named_parameters():
             if p.requires_grad:
                 continue
             # ignore text tower
-            if 'clip_model.token_embedding' in n or 'clip_model.positional_embedding' in n or 'clip_model.transformer' in n or 'clip_model.ln_final' in n or 'clip_model.text_projection' in n:
+            if (
+                "clip_model.token_embedding" in n
+                or "clip_model.positional_embedding" in n
+                or "clip_model.transformer" in n
+                or "clip_model.ln_final" in n
+                or "clip_model.text_projection" in n
+            ):
                 continue
-            frozen_params_exclude_text += p.numel()    
-        print(f"total_params: {total_params}, trainable_params: {trainable_params}, frozen_params: {frozen_params}, frozen_params_exclude_text: {frozen_params_exclude_text}")
+            frozen_params_exclude_text += p.numel()
+        print(
+            f"total_params: {total_params}, trainable_params: {trainable_params}, frozen_params: {frozen_params},\
+                frozen_params_exclude_text: {frozen_params_exclude_text}"
+        )
 
-        if args.single_model:
-            res = run_eval(cfg, model, cfg.MODEL.WEIGHTS, args)
-        else:
-            files = sorted(os.listdir(cfg.OUTPUT_DIR))
-            for file in files:
-                if file.endswith(".pth"):
-                    model_path = os.path.join(cfg.OUTPUT_DIR, file)
-
-                    match = re.search(r'model_(\d+)\.pth', model_path)
-                    if match:
-                        model_number = int(match.group(1))
-                    else:
-                        continue
-                
-                    res = run_eval(cfg, model, model_path, args)
-                    if is_main_process():
-                        wandb.log(add_sufix_to_keys(res['panoptic_seg'], args.metric_suffix), step=model_number)
-        return res
+        return run_eval(cfg, model, cfg.MODEL.WEIGHTS, args)
 
     trainer = Trainer(cfg)
 
     trainer.resume_or_load(resume=args.resume)
-
-    #checkpoint = torch.load(cfg.MODEL.WEIGHTS, map_location="cpu")
-    #state_dict = checkpoint["model"]
-    #backbone_state_dict = {
-    #    k.replace("backbone.", ""): v
-    #    for k, v in state_dict.items()
-    #    if k.startswith("backbone.")
-    #}
-    #trainer.model.module.backbone.load_state_dict(backbone_state_dict)
-    #for g in trainer.optimizer.param_groups:
-    #    g['lr'] = 1e-7
-
     return trainer.train()
 
 
-def get_parser():
-    parser = default_argument_parser()
-    parser.add_argument(
-        "--wandb-name",
-        default="TEST",
-        help="WANDB run name",
-        type=str,
-    )
-    parser.add_argument(
-        "--metric-suffix",
-        default="",
-        help="Suffix to add to the metric keys",
-        type=str,
-    )
-
-    parser.add_argument(
-        "--single-model",
-        action="store_true",
-        help="Evaluate a single model",
-    )
-
-    return parser
-
 if __name__ == "__main__":
-    args = get_parser().parse_args()
+    args = default_argument_parser().parse_args()
 
     print("Command Line Args:", args)
     launch(
