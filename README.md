@@ -6,7 +6,7 @@
 
 Faculty of Computer and Information Science, University of Ljubljana
 
-[[`Preprint`](https://arxiv.org/abs/2411.17576)]  [[`Project page`](https://jovanavidenovic.github.io/dam-4-sam/) ]
+[[`Preprint`]()]  [[`Project page`]() ]
 
 </div>
 
