@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+        content="Mitigating Objectness Bias and Region-to-Text Misalignment for Open-Vocabulary Panoptic Segmentation">
+  <meta name="keywords" content="OVRCOAT, Segmentation, Open-Vocabulary, Panoptic Segmentation">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OVRCOAT</title>
+
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+        rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="./static/js/index.js"></script>
+</head>
+<body>
+
+<!-- <nav class="navbar" role="navigation" aria-label="main navigation"> -->
+  <!-- <div class="navbar-brand"> -->
+    <!-- <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false"> -->
+      <!-- <span aria-hidden="true"></span> -->
+      <!-- <span aria-hidden="true"></span> -->
+      <!-- <span aria-hidden="true"></span> -->
+    <!-- </a> -->
+  <!-- </div> -->
+  <!-- <div class="navbar-menu"> -->
+    <!-- <div class="navbar-start" style="flex-grow: 1; justify-content: center;"> -->
+      <!-- <a class="navbar-item" href="https://keunhong.com"> -->
+      <!-- <span class="icon"> -->
+          <!-- <i class="fas fa-home"></i> -->
+      <!-- </span> -->
+      <!-- </a> -->
+
+      <!-- <div class="navbar-item has-dropdown is-hoverable"> -->
+        <!-- <a class="navbar-link"> -->
+          <!-- More Research -->
+        <!-- </a> -->
+        <!-- <div class="navbar-dropdown"> -->
+          <!-- <a class="navbar-item" href="https://hypernerf.github.io"> -->
+            <!-- HyperNeRF -->
+          <!-- </a> -->
+          <!-- <a class="navbar-item" href="https://nerfies.github.io"> -->
+            <!-- Nerfies -->
+          <!-- </a> -->
+          <!-- <a class="navbar-item" href="https://latentfusion.github.io"> -->
+            <!-- LatentFusion -->
+          <!-- </a> -->
+          <!-- <a class="navbar-item" href="https://photoshape.github.io"> -->
+            <!-- PhotoShape -->
+          <!-- </a> -->
+        <!-- </div> -->
+      <!-- </div> -->
+    <!-- </div> -->
+
+  <!-- </div> -->
+<!-- </nav> -->
+
+
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <h1 class="title is-1 publication-title">Mitigating Objectness Bias and Region-to-Text Misalignment for
+Open-Vocabulary Panoptic Segmentation</h1>
+          <div class="is-size-5 publication-authors">
+            <span class="author-block">
+              <a href="https://www.linkedin.com/in/kormushev/">Nikolay Kormushev</a><sup>1,2</sup>,</span>
+            <span class="author-block">
+              <a href="https://jsaric.github.io/">Josip Saric</a><sup>1,3</sup>,</span>
+            <span class="author-block">
+              <a href="https://www.vicos.si/people/matej_kristan/">Matej Kristan</a><sup>1</sup>,
+            </span>
+          </div>
+
+          <div class="is-size-5 publication-authors">
+            <span class="author-block"><sup>1</sup>University of Ljubljana,</span>
+            <span class="author-block"><sup>2</sup>ETH Zurich</span>
+            <span class="author-block"><sup>3</sup>University of Zagreb</span>
+          </div>
+
+          <div class="column has-text-centered">
+            <div class="publication-links">
+              <!-- PDF Link. -->
+              <span class="link-block">
+                <a href="https://arxiv.org/pdf/2011.12948"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fas fa-file-pdf"></i>
+                  </span>
+                  <span>Paper</span>
+                </a>
+              </span>
+              <span class="link-block">
+                <a href="https://arxiv.org/abs/2011.12948"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>arXiv</span>
+                </a>
+              </span>
+              <!-- Code Link. -->
+              <span class="link-block">
+                <a href="https://github.com/nickormushev/OVRCOAT"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-github"></i>
+                  </span>
+                  <span>Code</span>
+                  </a>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+      <img src="./imgs/comparison.gif" alt="GIF" style="width: 100%; max-width: 1200px;">
+      <h2 class="subtitle has-text-centered">
+        <span class="dnerf">OVRCOAT</span> segmentation examples.
+      </h2>
+    </div>
+  </div>
+</section>
+
+
+<section class="hero is-light is-small">
+  <div class="container is-max-desktop">
+    <!-- Abstract. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <br>
+        <br>
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p></p>
+          <p>
+
+            Open-vocabulary panoptic segmentation remains hindered by two
+            coupled issues: (i) mask selection bias, where objectness heads
+            trained on closed vocabularies suppress masks of categories not
+            observed in training, and (ii) limited regional understanding in
+            vision–language models such as CLIP, which were optimized for global
+            image classification rather than localized segmentation. We
+            introduce OVRCOAT, a simple, modular framework that tackles both.
+            First, a CLIP-conditioned objectness adjustment (COAT) updates
+            background/foreground probabilities, preserving high-quality masks
+            for out-of-vocabulary objects. Second, an open-vocabulary
+            mask-to-text refinement (OVR) strengthens CLIP’s region-level
+            alignment to improve classification of both seen and unseen classes
+            with markedly lower memory cost than prior fine-tuning schemes. The
+            two components combine to jointly improve objectness estimation and
+            mask recognition, yielding consistent panoptic gains. Despite its
+            simplicity, OVRCOAT sets a new state of the art on ADE20K (+5.5% PQ)
+            and delivers clear gains on Mapillary Vistas and Cityscapes (+7.1% and +3% PQ, respectively).
+
+          </p>
+          <br>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<section class="section">
+  <div class="container is-max-desktop">
+
+    <!-- Animation. -->
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Qualitative Results on ADE20k</h2>
+
+        <!-- Interpolating. -->
+        <div class="columns is-vcentered interpolation-panel">
+            <img src="./imgs/qualitative.png"
+                 class="interpolation-image"
+                 alt="Interpolate start reference image."/>
+        </div>
+        <br/>
+        <!--/ Interpolating. -->
+
+        <!--/ Re-rendering. -->
+
+      </div>
+    </div>
+    <!--/ Animation. -->
+  </div>
+</section>
+
+<section class="hero is-light is-small">
+    <div class="container is-max-desktop content">
+    <br>
+    <h2 class="title is-3">Quantitative Results</h2>
+    <style>
+    .results-table {
+    border-collapse: collapse;
+    margin: 2rem auto;
+    font-size: 14px;
+    text-align: center;
+    }
+
+    .results-table th,
+    .results-table td {
+    padding: 6px 10px;
+    }
+
+    .results-table thead th {
+    border-bottom: 2px solid #000;
+    font-weight: 600;
+    }
+
+    .dataset-header {
+    font-size: 13px;
+    color: #555;
+    padding-top: 10px;
+    }
+
+    .subheader {
+    font-size: 12px;
+    color: #777;
+    }
+
+    .divider td {
+    border-top: 1.5px solid #000;
+    }
+
+    .ours {
+    font-weight: 700;
+    background-color: #f5f7ff;
+    }
+
+    .gray {
+    color: #aaa;
+    }
+
+    .improvement {
+    font-size: 11px;
+    color: #2a6;
+    margin-left: 2px;
+    }
+    </style>
+
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th rowspan="2">Method</th>
+          <th colspan="3">ADE20K</th>
+          <th colspan="3">Mapillary</th>
+          <th colspan="3">Cityscapes</th>
+          <th colspan="3" class="gray">COCO</th>
+        </tr>
+        <tr class="subheader">
+          <th>PQ</th><th>SQ</th><th>RQ</th>
+          <th>PQ</th><th>SQ</th><th>RQ</th>
+          <th>PQ</th><th>SQ</th><th>RQ</th>
+          <th class="gray">PQ</th><th class="gray">SQ</th><th class="gray">RQ</th>
+        </tr>
+      </thead>
+    
+      <tbody>
+        <tr>
+          <td>MaskCLIP</td>
+          <td>15.1</td><td>70.5</td><td>19.2</td>
+          <td>-</td><td>-</td><td>-</td>
+          <td>-</td><td>-</td><td>-</td>
+          <td class="gray">-</td><td class="gray">-</td><td class="gray">-</td>
+        </tr>
+      
+        <tr>
+          <td>FreeSeg</td>
+          <td>16.3</td><td>71.8</td><td>21.6</td>
+          <td>-</td><td>-</td><td>-</td>
+          <td>-</td><td>-</td><td>-</td>
+          <td class="gray">-</td><td class="gray">-</td><td class="gray">-</td>
+        </tr>
+      
+        <tr>
+          <td>OPSNet</td>
+          <td>19.0</td><td>52.4</td><td>23.0</td>
+          <td>-</td><td>-</td><td>-</td>
+          <td>41.5</td><td>67.5</td><td>50.0</td>
+          <td class="gray">52.4</td><td class="gray">83.5</td><td class="gray">62.1</td>
+        </tr>
+      
+        <tr>
+          <td>ODISE</td>
+          <td>23.4</td><td><b>78.1</b></td><td>28.3</td>
+          <td>14.2</td><td>61.0</td><td>17.2</td>
+          <td>23.9</td><td>75.3</td><td>29.0</td>
+          <td class="gray"><b>55.4</b></td><td class="gray">-</td><td class="gray">-</td>
+        </tr>
+      
+        <tr>
+          <td>FC-CLIP</td>
+          <td>26.8</td><td>71.2</td><td>32.3</td>
+          <td>18.3</td><td>56.0</td><td>23.1</td>
+          <td>44.0</td><td>75.4</td><td>53.6</td>
+          <td class="gray">54.4</td><td class="gray">-</td><td class="gray">-</td>
+        </tr>
+      
+        <tr>
+          <td>MAFT+</td>
+          <td>27.1</td><td>73.5</td><td>32.9</td>
+          <td>15.7</td><td>55.5</td><td>19.8</td>
+          <td>38.3</td><td>70.2</td><td>46.9</td>
+          <td class="gray">50.3</td><td class="gray">82.2</td><td class="gray">60.3</td>
+        </tr>
+      
+        <tr class="divider ours">
+          <td>OVRCOAT</td>
+          <td>28.6<span class="improvement">(+1.5)</span></td>
+          <td>77.3<span class="improvement">(-0.8)</span></td>
+          <td>34.7<span class="improvement">(+1.8)</span></td>
+        
+          <td>19.6<span class="improvement">(+1.3)</span></td>
+          <td>65.7<span class="improvement">(+4.7)</span></td>
+          <td>24.8<span class="improvement">(+1.7)</span></td>
+        
+          <td>45.3<span class="improvement">(+1.3)</span></td>
+          <td>78.7<span class="improvement">(+3.3)</span></td>
+          <td>55.6<span class="improvement">(+2.0)</span></td>
+        
+          <td class="gray">54.6</td>
+          <td class="gray">82.9</td>
+          <td class="gray">65.1</td>
+        </tr>
+      </tbody>
+    </table>
+
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+
+    <!-- Animation. -->
+    <div class="columns is-centered">
+      <div class="column is-full-width">
+        <h2 class="title is-3">Qualitative Results on Internet Images</h2>
+
+        <!-- Interpolating. -->
+        <div class="columns is-vcentered interpolation-panel">
+            <img src="./imgs/OOV.png"
+                 class="interpolation-image"
+                 alt="Out-of-Vocabulary examples"/>
+        </div>
+        <br/>
+        <!--/ Interpolating. -->
+
+        <!--/ Re-rendering. -->
+
+      </div>
+    </div>
+    <!--/ Animation. -->
+  </div>
+</section>
+
+<section class="section is-light" id="BibTeX">
+  <div class="container is-max-desktop content">
+    <h2 class="title">BibTeX</h2>
+    <pre><code>@inproceedings{ovrcoat,
+  title={Mitigating Objectness Bias and Region-to-Text Misalignment for Open-Vocabulary Panoptic Segmentation},
+  author={Nikolay Kormushev and Josip Šarić and Matej Kristan},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year={2026},
+}</code></pre>
+  </div>
+</section>
+
+
+<footer class="footer">
+  <div class="container">
+    <div class="content has-text-centered">
+      <a class="icon-link" href="https://github.com/nickormushev/OVRCOAT" class="external-link" disabled>
+        <i class="fab fa-github"></i>
+      </a>
+    </div>
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+
+          <p>
+            This website is licensed under a 
+            <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">
+              CC BY-SA 4.0
+            </a> and is based on the 
+            <a href="https://github.com/nerfies/nerfies.github.io">
+              Nerfies template
+            </a>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
