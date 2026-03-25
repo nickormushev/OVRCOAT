@@ -155,3 +155,8 @@ body {
 #interpolation-image-wrapper img {
   border-radius: 5px;
 }
+
+.table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}

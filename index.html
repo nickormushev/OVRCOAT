@@ -198,144 +198,182 @@ Open-Vocabulary Panoptic Segmentation</h1>
 </section>
 
 <section class="hero is-light is-small">
-    <div class="container is-max-desktop content">
+  <div class="container is-max-desktop content interpolation-panel">
     <br>
     <h2 class="title is-3">Quantitative Results</h2>
     <style>
     .results-table {
-    border-collapse: collapse;
-    margin: 2rem auto;
-    font-size: 14px;
-    text-align: center;
+      width: 100%;
+      border-collapse: collapse;
+      margin: 2rem auto 0;
+      font-size: 14px;
+      text-align: center;
+      table-layout: fixed;
     }
-
+    
     .results-table th,
     .results-table td {
-    padding: 6px 10px;
+      padding: 6px 8px;
+      overflow-wrap: anywhere;
+      vertical-align: middle;
     }
 
     .results-table thead th {
-    border-bottom: 2px solid #000;
-    font-weight: 600;
+      border-bottom: 2px solid #000;
+      font-weight: 600;
+    }
+
+    .results-table th:first-child,
+    .results-table td:first-child {
+      text-align: left;
+      width: 18%;
     }
 
     .dataset-header {
-    font-size: 13px;
-    color: #555;
-    padding-top: 10px;
+      font-size: 13px;
+      color: #555;
+      padding-top: 10px;
     }
 
     .subheader {
-    font-size: 12px;
-    color: #777;
+      font-size: 12px;
+      color: #777;
     }
 
     .divider td {
-    border-top: 1.5px solid #000;
+      border-top: 1.5px solid #000;
     }
 
     .ours {
-    font-weight: 700;
-    background-color: #f5f7ff;
+      font-weight: 700;
+      background-color: #f5f7ff;
     }
 
     .gray {
-    color: #aaa;
+      color: #aaa;
     }
 
     .improvement {
-    font-size: 11px;
-    color: #2a6;
-    margin-left: 2px;
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 5px;
+      border-radius: 999px;
+      background: rgba(42, 170, 102, 0.12);
+      color: #1f7a4f;
+      font-size: 11px;
+      line-height: 1;
+      white-space: nowrap;
+      vertical-align: middle;
+      font-variant-numeric: tabular-nums;
+    }
+
+    @media screen and (max-width: 768px) {
+      .results-table {
+        font-size: 11px;
+      }
+
+      .results-table th,
+      .results-table td {
+        padding: 4px 5px;
+      }
+
+      .improvement {
+        margin-left: 3px;
+        padding: 1px 4px;
+        font-size: 9px;
+      }
     }
     </style>
 
-    <table class="results-table">
-      <thead>
-        <tr>
-          <th rowspan="2">Method</th>
-          <th colspan="3">ADE20K</th>
-          <th colspan="3">Mapillary</th>
-          <th colspan="3">Cityscapes</th>
-          <th colspan="3" class="gray">COCO</th>
-        </tr>
-        <tr class="subheader">
-          <th>PQ</th><th>SQ</th><th>RQ</th>
-          <th>PQ</th><th>SQ</th><th>RQ</th>
-          <th>PQ</th><th>SQ</th><th>RQ</th>
-          <th class="gray">PQ</th><th class="gray">SQ</th><th class="gray">RQ</th>
-        </tr>
-      </thead>
+    <div class="table-container">
+      <table class="results-table">
+        <thead>
+          <tr>
+            <th rowspan="2">Method</th>
+            <th colspan="3">ADE20K</th>
+            <th colspan="3">Mapillary</th>
+            <th colspan="3">Cityscapes</th>
+            <th colspan="3" class="gray">COCO</th>
+          </tr>
+          <tr class="subheader">
+            <th>PQ</th><th>SQ</th><th>RQ</th>
+            <th>PQ</th><th>SQ</th><th>RQ</th>
+            <th>PQ</th><th>SQ</th><th>RQ</th>
+            <th class="gray">PQ</th><th class="gray">SQ</th><th class="gray">RQ</th>
+          </tr>
+        </thead>
     
-      <tbody>
-        <tr>
-          <td>MaskCLIP</td>
-          <td>15.1</td><td>70.5</td><td>19.2</td>
-          <td>-</td><td>-</td><td>-</td>
-          <td>-</td><td>-</td><td>-</td>
-          <td class="gray">-</td><td class="gray">-</td><td class="gray">-</td>
-        </tr>
-      
-        <tr>
-          <td>FreeSeg</td>
-          <td>16.3</td><td>71.8</td><td>21.6</td>
-          <td>-</td><td>-</td><td>-</td>
-          <td>-</td><td>-</td><td>-</td>
-          <td class="gray">-</td><td class="gray">-</td><td class="gray">-</td>
-        </tr>
-      
-        <tr>
-          <td>OPSNet</td>
-          <td>19.0</td><td>52.4</td><td>23.0</td>
-          <td>-</td><td>-</td><td>-</td>
-          <td>41.5</td><td>67.5</td><td>50.0</td>
-          <td class="gray">52.4</td><td class="gray">83.5</td><td class="gray">62.1</td>
-        </tr>
-      
-        <tr>
-          <td>ODISE</td>
-          <td>23.4</td><td><b>78.1</b></td><td>28.3</td>
-          <td>14.2</td><td>61.0</td><td>17.2</td>
-          <td>23.9</td><td>75.3</td><td>29.0</td>
-          <td class="gray"><b>55.4</b></td><td class="gray">-</td><td class="gray">-</td>
-        </tr>
-      
-        <tr>
-          <td>FC-CLIP</td>
-          <td>26.8</td><td>71.2</td><td>32.3</td>
-          <td>18.3</td><td>56.0</td><td>23.1</td>
-          <td>44.0</td><td>75.4</td><td>53.6</td>
-          <td class="gray">54.4</td><td class="gray">-</td><td class="gray">-</td>
-        </tr>
-      
-        <tr>
-          <td>MAFT+</td>
-          <td>27.1</td><td>73.5</td><td>32.9</td>
-          <td>15.7</td><td>55.5</td><td>19.8</td>
-          <td>38.3</td><td>70.2</td><td>46.9</td>
-          <td class="gray">50.3</td><td class="gray">82.2</td><td class="gray">60.3</td>
-        </tr>
-      
-        <tr class="divider ours">
-          <td>OVRCOAT</td>
-          <td>28.6<span class="improvement">(+1.5)</span></td>
-          <td>77.3<span class="improvement">(-0.8)</span></td>
-          <td>34.7<span class="improvement">(+1.8)</span></td>
+        <tbody>
+          <tr>
+            <td>MaskCLIP</td>
+            <td>15.1</td><td>70.5</td><td>19.2</td>
+            <td>-</td><td>-</td><td>-</td>
+            <td>-</td><td>-</td><td>-</td>
+            <td class="gray">-</td><td class="gray">-</td><td class="gray">-</td>
+          </tr>
         
-          <td>19.6<span class="improvement">(+1.3)</span></td>
-          <td>65.7<span class="improvement">(+4.7)</span></td>
-          <td>24.8<span class="improvement">(+1.7)</span></td>
+          <tr>
+            <td>FreeSeg</td>
+            <td>16.3</td><td>71.8</td><td>21.6</td>
+            <td>-</td><td>-</td><td>-</td>
+            <td>-</td><td>-</td><td>-</td>
+            <td class="gray">-</td><td class="gray">-</td><td class="gray">-</td>
+          </tr>
         
-          <td>45.3<span class="improvement">(+1.3)</span></td>
-          <td>78.7<span class="improvement">(+3.3)</span></td>
-          <td>55.6<span class="improvement">(+2.0)</span></td>
+          <tr>
+            <td>OPSNet</td>
+            <td>19.0</td><td>52.4</td><td>23.0</td>
+            <td>-</td><td>-</td><td>-</td>
+            <td>41.5</td><td>67.5</td><td>50.0</td>
+            <td class="gray">52.4</td><td class="gray">83.5</td><td class="gray">62.1</td>
+          </tr>
         
-          <td class="gray">54.6</td>
-          <td class="gray">82.9</td>
-          <td class="gray">65.1</td>
-        </tr>
-      </tbody>
-    </table>
+          <tr>
+            <td>ODISE</td>
+            <td>23.4</td><td><b>78.1</b></td><td>28.3</td>
+            <td>14.2</td><td>61.0</td><td>17.2</td>
+            <td>23.9</td><td>75.3</td><td>29.0</td>
+            <td class="gray"><b>55.4</b></td><td class="gray">-</td><td class="gray">-</td>
+          </tr>
+        
+          <tr>
+            <td>FC-CLIP</td>
+            <td>26.8</td><td>71.2</td><td>32.3</td>
+            <td>18.3</td><td>56.0</td><td>23.1</td>
+            <td>44.0</td><td>75.4</td><td>53.6</td>
+            <td class="gray">54.4</td><td class="gray">-</td><td class="gray">-</td>
+          </tr>
+        
+          <tr>
+            <td>MAFT+</td>
+            <td>27.1</td><td>73.5</td><td>32.9</td>
+            <td>15.7</td><td>55.5</td><td>19.8</td>
+            <td>38.3</td><td>70.2</td><td>46.9</td>
+            <td class="gray">50.3</td><td class="gray">82.2</td><td class="gray">60.3</td>
+          </tr>
+        
+          <tr class="divider ours">
+            <td>OVRCOAT</td>
+            <td>28.6<span class="improvement">(+1.5)</span></td>
+            <td>77.3<span class="improvement">(-0.8)</span></td>
+            <td>34.7<span class="improvement">(+1.8)</span></td>
+          
+            <td>19.6<span class="improvement">(+1.3)</span></td>
+            <td>65.7<span class="improvement">(+4.7)</span></td>
+            <td>24.8<span class="improvement">(+1.7)</span></td>
+          
+            <td>45.3<span class="improvement">(+1.3)</span></td>
+            <td>78.7<span class="improvement">(+3.3)</span></td>
+            <td>55.6<span class="improvement">(+2.0)</span></td>
+          
+            <td class="gray">54.6</td>
+            <td class="gray">82.9</td>
+            <td class="gray">65.1</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 
 </section>
 
