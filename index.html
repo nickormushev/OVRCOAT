@@ -198,35 +198,60 @@ Open-Vocabulary Panoptic Segmentation</h1>
 </section>
 
 <section class="hero is-light is-small">
-  <div class="container is-max-desktop content interpolation-panel">
+  <div class="container is-max-desktop content interpolation-panel quantitative-results-panel">
     <br>
     <h2 class="title is-3">Quantitative Results</h2>
     <style>
+    .quantitative-results-panel {
+      max-width: 100%;
+      overflow: hidden;
+    }
+
+    .table-container.results-table-container {
+      display: block;
+      width: 100%;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      touch-action: pan-x;
+      margin-top: 2rem;
+      padding-bottom: 0.5rem;
+    }
+
     .results-table {
       width: 100%;
+      min-width: 58rem;
       border-collapse: collapse;
-      margin: 2rem auto 0;
+      margin: 0;
       font-size: 14px;
       text-align: center;
-      table-layout: fixed;
+      table-layout: auto;
     }
-    
+
     .results-table th,
     .results-table td {
       padding: 6px 8px;
       overflow-wrap: anywhere;
       vertical-align: middle;
+      min-width: 4.25rem;
     }
 
     .results-table thead th {
       border-bottom: 2px solid #000;
       font-weight: 600;
+      white-space: nowrap;
     }
 
     .results-table th:first-child,
     .results-table td:first-child {
       text-align: left;
-      width: 12%;
+      min-width: 8.5rem;
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: #fff;
     }
 
     .dataset-header {
@@ -249,6 +274,10 @@ Open-Vocabulary Panoptic Segmentation</h1>
       background-color: #f5f7ff;
     }
 
+    .ours td:first-child {
+      background-color: #f5f7ff;
+    }
+
     .gray {
       color: #aaa;
     }
@@ -267,78 +296,66 @@ Open-Vocabulary Panoptic Segmentation</h1>
       font-variant-numeric: tabular-nums;
     }
 
+    .results-table td:not(:first-child) {
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+
     @media screen and (max-width: 768px) {
       .results-table {
-        font-size: 8px;
-      }
-
-      .results-table td:not(:first-child) {
-        font-size: clamp(5px, 1.1vw, 7px);
-      }
-
-      .results-table thead tr:nth-child(2) th {
-        font-size: clamp(5px, 1.1vw, 7px);
+        font-size: 12px;
+        min-width: 46rem;
       }
 
       .results-table th,
       .results-table td {
-        padding: 2px 3px;
-      }
-
-      .improvement {
-        margin-left: 2px;
-        padding: 0 3px;
-        font-size: 6px;
-      }
-
-      .results-table thead tr:first-child th {
-        font-size: 7px;
-      }
-
-      .results-table tbody td:nth-child(11),
-      .results-table tbody td:nth-child(12),
-      .results-table tbody td:nth-child(13),
-      .results-table thead tr:nth-child(2) th:nth-child(10),
-      .results-table thead tr:nth-child(2) th:nth-child(11),
-      .results-table thead tr:nth-child(2) th:nth-child(12) {
-        font-size: 6px;
-      }
-    }
-
-    @media screen and (max-width: 480px) {
-      .results-table thead tr:nth-child(2) th,
-      .results-table td:not(:first-child) {
-        font-size: 5px;
+        min-width: 3.7rem;
+        padding: 5px 6px;
       }
 
       .results-table th:first-child,
       .results-table td:first-child {
-        width: 8%;
+        min-width: 7.25rem;
+      }
+
+      .improvement {
+        display: block;
+        width: fit-content;
+        margin: 3px auto 0;
+        padding: 1px 4px;
+        font-size: 9px;
+      }
+
+      .results-table thead tr:first-child th {
+        font-size: 11px;
+      }
+    }
+
+    @media screen and (max-width: 480px) {
+      .results-table {
+        min-width: 40rem;
+      }
+
+      .results-table th:first-child,
+      .results-table td:first-child {
+        min-width: 6.5rem;
       }
 
       .results-table th,
       .results-table td {
-        padding: 1px 2px;
+        min-width: 3.25rem;
+        padding: 4px 5px;
       }
 
       .improvement {
-        margin-top: 1px;
+        margin-top: 2px;
         padding: 0 2px;
-        font-size: 5px;
-      }
-
-      .results-table tbody td:nth-child(11),
-      .results-table tbody td:nth-child(12),
-      .results-table tbody td:nth-child(13),
-      .results-table thead tr:nth-child(2) th:nth-child(10),
-      .results-table thead tr:nth-child(2) th:nth-child(11),
-      .results-table thead tr:nth-child(2) th:nth-child(12) {
-        font-size: 4px;
+        font-size: 8px;
       }
     }
     </style>
 
-    <div class="table-container">
+    <div class="table-container results-table-container">
       <table class="results-table">
         <thead>
           <tr>
