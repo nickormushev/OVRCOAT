@@ -51,6 +51,25 @@ body {
     font-family: 'Google Sans', sans-serif;
 }
 
+.publication-supertitle {
+    margin: 1rem auto 1.5rem;
+    text-align: center;
+}
+
+.publication-supertitle span {
+    display: inline-block;
+    padding: 0.35rem 0.9rem;
+    border: 1px solid #d7e2f0;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+    color: #305f8f;
+    font-family: 'Google Sans', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 .publication-authors {
     font-family: 'Google Sans', sans-serif;
 }
