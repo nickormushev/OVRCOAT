@@ -6,7 +6,7 @@
 
 Faculty of Computer and Information Science, University of Ljubljana
 
-[[`Preprint`]()]  [[`Project page`]() ]
+[[`Preprint`](https://arxiv.org/abs/2603.21386)]  [[`Project page`](https://nickormushev.github.io/OVRCOAT/)]
 
 </div>
 
